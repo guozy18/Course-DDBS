@@ -1,4 +1,5 @@
 /target
+sql-data/
 
 Cargo.lock
 *.tar.gz

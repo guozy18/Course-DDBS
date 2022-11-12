@@ -10,19 +10,39 @@ Docker 目前完成了对 mysql 服务器以及对 HDFS 服务的基本配置，
 
 以上信息可以从`docker-config/docker-compose.yml`中查看到
 
-### build与运行
-```shell
-# build hdfs image
-cd docker-config/hdfs
-./build.sh
+### 环境准备
+需要手动完成的目前只有 *准备课程提供的数据文件夹*
 
-# launch all containers
-cd ..
-docker compose up
+```shell
+# 移动课程文件夹到当前目录，注意目前必须移动到./sql-data下
+mv /path/to/your/db-generation ./sql-data
 ```
 
-### 验证mysql server正常工作
+为了正确运行多个docker环境，需要有一些准备工作：
+1. 需要提前 build 使用的 docker image
+2. 需要提前生成好两个DBMS需要的数据（以`.sql`的格式）
+
 ```shell
+cd scripts && ./init.sh && cd ..
+# 此时可以验证 ./sql-data/ 下已经有了对应shard的.sql
+# 同时docker image ls 也应该能看到hdfs-base, server这样的镜像
+```
+### docker compose 运行
+```shell
+# launch all containers
+cd docker-config
+docker compose up
+
+# 启动后可以验证 mysql 正常工作
+# 注意 mysql1 的 hostname 就是 mysql1，密码是 mysql1，对于 mysql2 类似
 docker run -it --network docker-config_ddbms-network --rm mysql:8.0 mysql -hmysql1 -uroot -p
 docker run -it --network docker-config_ddbms-network --rm mysql:8.0 mysql -hmysql2 -uroot -p
+
+# stop all containers
+cd docker-config
+docker compose stop
+
+# remove all containers
+cd docker-config
+docker compose down
 ```
