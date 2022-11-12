@@ -1,6 +1,7 @@
 #!/usr/bin/bash
 SQL_DATA_DIR="../sql-data"
 DATA_GEN_SCRIPTS="genTable_sql_relationalDB10G.py"
+PROXY_ADDR=http://127.0.0.1:7890
 
 function build_docker_image() {
     local scripts_dir=$(dirname $(readlink -f $0))
@@ -12,24 +13,23 @@ function build_docker_image() {
     fi
 
     docker build . \
-        --build-arg "HTTP_PROXY=http://127.0.0.1:7890" \
-        --build-arg "HTTPS_PROXY=http://127.0.0.1:7890/" \
+        --build-arg "HTTP_PROXY=$PROXY_ADDR" \
+        --build-arg "HTTPS_PROXY=$PROXY_ADDR" \
         --build-arg "NO_PROXY=localhost,127.0.0.1" \
         --network host -f base.Dockerfile \
         -t hdfs-base
 
     docker build . \
-        --build-arg "HTTP_PROXY=http://127.0.0.1:7890" \
-        --build-arg "HTTPS_PROXY=http://127.0.0.1:7890/" \
+        --build-arg "HTTP_PROXY=$PROXY_ADDR" \
+        --build-arg "HTTPS_PROXY=$PROXY_ADDR" \
         --build-arg "NO_PROXY=localhost,127.0.0.1" \
         --network host -f server.Dockerfile \
         -t server
 
     docker build . -f namenode.Dockerfile -t hdfs-namenode
 
-    # do not init hdfs for noe
+    # do not init hdfs for now
     # docker build . -f init-hdfs.Dockerfile -t init-hdfs
-    cd $original_dir
 }
 
 function generate_sql_data() {
@@ -46,10 +46,27 @@ function generate_sql_data() {
     python3 make_shard.py -s $SQL_DATA_DIR
 }
 
+NO_DOCKER=0
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --no-docker)
+      NO_DOCKER=1
+      shift # past value
+      ;;
+    *)
+      echo "unknown args: $1"
+      exit 1
+      ;;
+  esac
+done
+
 original_dir=$(dirname $(readlink -f $0))
-echo "start build docker image"
-build_docker_image
-cd $original_dir
+if [ $NO_DOCKER -eq 0 ];then
+    echo "start build docker image"
+    build_docker_image
+    cd $original_dir
+fi
+
 echo "start generate sql data in $SQL_DATA_DIR"
 generate_sql_data
 cd $original_dir

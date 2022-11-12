@@ -23,6 +23,12 @@ mv /path/to/your/db-generation ./sql-data
 2. 需要提前生成好两个DBMS需要的数据（以`.sql`的格式）
 
 ```shell
+# 如果使用实验室服务器，它和外网不通，为了正确拉取镜像可能需要配置代理，可以在init.sh中修改参数PROXY_ADDR
+# 另外如果使用实验室服务器，可以用以下方式验证 docker image 已经存在了，那么不需要build docker image了
+docker image ls
+# 如果能够看到hdfs-base, server, hdfs-namenode，mysql 8.0，那么无需再build docker image
+cd scripts && ./init.sh --no-docker && cd ..
+# 否则还是需要执行 docker build
 cd scripts && ./init.sh && cd ..
 # 此时可以验证 ./sql-data/ 下已经有了对应shard的.sql
 # 同时docker image ls 也应该能看到hdfs-base, server这样的镜像
