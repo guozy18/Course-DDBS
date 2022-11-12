@@ -6,6 +6,12 @@ services:
       - "9870:9870"
     networks:
       - ddbms-network
+    healthcheck:
+      test: ["CMD", "hdfs", "dfs", "-ls", "/"]
+      interval: 1m30s
+      timeout: 10s
+      retries: 3
+
   datanode1:
     image: hdfs-base
     command: hdfs datanode
@@ -16,11 +22,30 @@ services:
     command: hdfs datanode
     networks:
       - ddbms-network
+
+  # It is too slow to upload data to hdfs
+  # for now we use bind volume to simulate all data is in hdfs
+
+  # init_hdfs:
+  #   image: init-hdfs
+  #   command: /root/sample-data
+  #   volumes:
+  #     - type: bind
+  #       source: ../sample-data
+  #       target: /root/sample-data
+  #   networks:
+  #     - ddbms-network
+
   mysql1:
     image: mysql:8.0
     command: --default-authentication-plugin=mysql_native_password
     environment:
       MYSQL_ROOT_PASSWORD: mysql1
+    volumes:
+      - type: bind
+        read_only: true
+        source: ../sql-data
+        target: /root/sql-data
     networks:
       - ddbms-network
   mysql2:
@@ -28,6 +53,31 @@ services:
     command: --default-authentication-plugin=mysql_native_password
     environment:
       MYSQL_ROOT_PASSWORD: mysql2
+    volumes:
+      - type: bind
+        read_only: true
+        source: ../sql-data
+        target: /root/sql-data
+    networks:
+      - ddbms-network
+
+  # need be able to connect to hdfs and mysql
+  # Now only for test purpose
+  server1:
+    image: server
+    command: hdfs dfs -ls /ddbms
+    depends_on:
+      init_hdfs:
+        condition: service_completed_successfully
+    volumes:
+      - type: bind
+        source: ../
+        target: /root/Course-DDBS
+    volumes:
+      - type: bind
+        read_only: true
+        source: ../sql-data
+        target: /root/sql-data
     networks:
       - ddbms-network
 

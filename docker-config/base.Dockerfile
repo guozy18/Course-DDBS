@@ -8,7 +8,7 @@ RUN apt-get -q update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY ./hadoop-3.2.4.tar.gz /root
-RUN tar xf hadoop-3.2.4.tar.gz
+RUN tar xf hadoop-3.2.4.tar.gz && rm hadoop-3.2.4.tar.gz
 
 ENV JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
 ENV HADOOP_HOME=/root/hadoop-3.2.4
