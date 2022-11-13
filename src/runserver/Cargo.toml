@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 protos = { path = "../protos" }
-dbserver = { path = "../server/dbserver" }
+dbserver = { path = "../dbserver" }
 clap = { version = "3.1.6", features = ["derive"] }
 tonic = "0.6.2"
 tokio = { version = "^1.11.0", features = ["rt-multi-thread"] }

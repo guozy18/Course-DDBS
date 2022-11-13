@@ -9,9 +9,9 @@ members = [
     "src/runserver",
     "src/protos",
     
-    "src/server/client",
-    "src/server/control",
-    "src/server/dbserver",
+    "src/client",
+    "src/control",
+    "src/dbserver",
 
     "tests",
 ]

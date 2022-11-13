@@ -2,6 +2,7 @@
 ### Usage: bash ./start.sh [OPTIONS] COMMAND
 
 start=false         # start servers or not
+test=false
 quit=false          # not quit servers
 mode=release
 dbserverport=27021
@@ -23,6 +24,9 @@ while [ -n "$1" ]; do
         ;;
     -s | --start)
         start=true
+        ;;
+    -t | --test)
+        test=true
         ;;
     -q | --quit)
         quit=true
@@ -79,15 +83,19 @@ echo "Option {
 }"
 
 if [ "$start" = true ]; then
-    # pkill -9 
+    pkill -9 ddbs-server
     sleep 1s
     echo "============STARTING Server============="
     $SERVER_BIN_PATH db-server -a 127.0.0.1:27023 -u root -p root -s 127.0.0.1:3306 -d mysql >$TARGET_FOLDER/dbserver.out 2>$TARGET_FOLDER/dbserver.err &
     echo "=================ENDING================="
 fi
 
+if [ "$test" = true ]; then
+    $CLIENT_BIN_PATH
+fi
+
 
 if [ "$quit" = true ]; then
     echo "kill all processes for server"
-    pkill -9 db-server
+    pkill -9 ddbs-server
 fi

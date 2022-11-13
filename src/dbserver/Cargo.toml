@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-protos = { path = "../../protos" }
+protos = { path = "../protos" }
 async-trait = "0.1.51"
 mysql = "22.2.0"
 tonic = "0.6.2"
