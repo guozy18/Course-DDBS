@@ -1,23 +1,33 @@
 use std::error::Error;
-use std::process::exit;
+use std::ffi::OsStr;
+use std::fs;
 
-fn run() -> Result<(), Box<dyn Error>> {
+const TARGET_DIR: &str = "src/protos_code_gen";
+
+fn os_str_to_string(s: impl AsRef<OsStr>) -> String {
+    s.as_ref().to_string_lossy().into_owned()
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
+    // Tells cargo to only rebuild if the proto file changed
+    println!("cargo:rerun-if-changed=dbserver.proto");
+
     let protos_path = concat!(env!("CARGO_MANIFEST_DIR"), "/protos");
-    let mut protos: Vec<String> = vec![];
-    for dir_entry in std::fs::read_dir(protos_path)
-        .unwrap()
-        .into_iter()
-        .flatten()
-    {
-        if let Some(file_ext) = std::path::Path::new(&dir_entry.file_name()).extension() {
-            if file_ext == "proto" {
-                protos.push(dir_entry.file_name().to_str().unwrap().to_string());
-            }
-        }
-    }
 
+    let mut protos = fs::read_dir(protos_path)?
+        .map(|e| e.unwrap())
+        .filter(|entry| {
+            let path = entry.path();
+            let extension = path.extension().map(|x| x.to_str().unwrap());
+            matches!(extension, Some("proto"))
+        })
+        .map(|entry| os_str_to_string(entry.file_name()))
+        .collect::<Vec<_>>();
+    protos.sort_unstable();
+
+    fs::create_dir_all(TARGET_DIR)?;
     tonic_build::configure()
-        .out_dir("src/protos_code_gen")
+        .out_dir(TARGET_DIR)
         .compile(&protos, &[protos_path.to_string()])
         .unwrap();
 
@@ -25,10 +35,7 @@ fn run() -> Result<(), Box<dyn Error>> {
         .create(true)
         .write(true)
         .truncate(true)
-        .open("src/protos_code_gen/mod.rs")
-        .unwrap();
-
-    protos.sort_unstable();
+        .open(format!("{}/{}", TARGET_DIR, "mod.rs"))?;
 
     for proto in protos {
         let line = format!(
@@ -39,18 +46,8 @@ fn run() -> Result<(), Box<dyn Error>> {
                 .to_str()
                 .unwrap()
         );
-        std::io::Write::write_all(&mut lib_rs, line.as_bytes()).unwrap();
+        std::io::Write::write_all(&mut lib_rs, line.as_bytes())?;
     }
 
     Ok(())
-}
-
-fn main() {
-    if let Err(err) = run() {
-        eprintln!("{}", err);
-        exit(1);
-    }
-
-    // Tells cargo to only rebuild if the proto file changed
-    println!("cargo:rerun-if-changed=dbserver.proto");
 }
