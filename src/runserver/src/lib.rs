@@ -95,13 +95,18 @@ pub enum ServerType {
             value_name = "HOST:PORT"
         )]
         addr: String,
+        /// DBServer user
+        #[clap(short, long, default_value = "root")]
+        user: String,
+        /// DBServer password
+        #[clap(short, long, default_value = "root")]
+        password: String,
         /// Mysql url
-        #[clap(
-            short,
-            long,
-            default_value = "mysql://root:password@localhost:3307/db_name"
-        )]
+        #[clap(short, long, default_value = "localhost:3306")]
         sql_url: String,
+        /// DBServer database
+        #[clap(short, long, default_value = "mysql")]
+        dbname: String,
     },
 }
 
@@ -110,3 +115,5 @@ pub fn parse_cli_args() -> CliArgs {
     println!("{:#?}", args);
     args
 }
+
+pub type Result<T> = std::result::Result<T, Exception>;

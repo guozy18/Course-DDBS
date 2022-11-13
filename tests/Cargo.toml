@@ -1,0 +1,20 @@
+[package]
+name = "tools"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+protos = { path = "../src/protos" }
+runserver = { path = "../src/runserver" }
+dbserver = { path = "../src/server/dbserver" }
+csv = "1.1.6"
+async-channel = "1.6.1"
+clap = { version = "3.0", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.8"
+tokio = { version = "1.11", features = ["fs"] }
+tonic = { version = "0.6", features = ["tls"] }
+eyre = "0.6.5"
+futures = "0.3.14"
+tracing = "0.1.33"

@@ -12,4 +12,6 @@ members = [
     "src/server/client",
     "src/server/control",
     "src/server/dbserver",
+
+    "tests",
 ]

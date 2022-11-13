@@ -5,9 +5,7 @@ use tonic::transport::Server as TonicServer;
 use tracing_subscriber::{filter::EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 use dbserver::DbServer;
-use runserver::{parse_cli_args, CliArgs, Exception, ServerType};
-
-pub type Result<T> = std::result::Result<T, Exception>;
+use runserver::{parse_cli_args, CliArgs, Result, ServerType};
 
 /// Runs Server.
 ///
@@ -21,10 +19,16 @@ async fn run_server(args: CliArgs) -> Result<()> {
     match args.server_type {
         ServerType::Client { .. } => unimplemented!(),
         ServerType::Control { .. } => unimplemented!(),
-        ServerType::DbServer { addr, sql_url } => {
+        ServerType::DbServer {
+            addr,
+            user,
+            password,
+            sql_url,
+            dbname,
+        } => {
             let addr = addr.to_socket_addrs()?.next().unwrap();
             let incoming_listener = TcpListenerStream::new(TcpListener::bind(addr).await?);
-            let db_service = DbServer::new(sql_url);
+            let db_service = DbServer::new(user, password, sql_url, dbname);
             let service = protos::db_server_server::DbServerServer::new(db_service);
             TonicServer::builder()
                 .add_service(service)
