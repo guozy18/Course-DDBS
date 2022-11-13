@@ -82,8 +82,7 @@ if [ "$start" = true ]; then
     # pkill -9 
     sleep 1s
     echo "============STARTING Server============="
-    $SERVER_BIN_PATH db-server -a 127.0.0.1:27023 -u root -p root -s 127.0.0.1:3306 -d mysql >$TARGET_FOLDER/dbserver.out &
-    sleep 2s
+    $SERVER_BIN_PATH db-server -a 127.0.0.1:27023 -u root -p root -s 127.0.0.1:3306 -d mysql >$TARGET_FOLDER/dbserver.out 2>$TARGET_FOLDER/dbserver.err &
     echo "=================ENDING================="
 fi
 

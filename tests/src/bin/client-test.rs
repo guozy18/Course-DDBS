@@ -47,7 +47,7 @@ pub async fn main() -> Result<()> {
     let mut store_client = TestClient::new(endpoint).await?;
 
     let test_req = BulkLoadRequest {
-        data_path: "/Users/oreki/Desktop/Rust/Course-DDBS/article.sql".to_string(),
+        data_path: "/Users/oreki/Desktop/Rust/Course-DDBS/article.txt".to_string(),
     };
 
     // test ping
