@@ -6,4 +6,10 @@
 [workspace]
 members = [
     "src/repl",
+    "src/runserver",
+    "src/protos",
+    
+    "src/server/client",
+    "src/server/control",
+    "src/server/dbserver",
 ]

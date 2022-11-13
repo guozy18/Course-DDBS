@@ -3,15 +3,6 @@ use std::time::Duration;
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
 
-// #[derive(Debug)]
-// pub struct MyHelper {
-
-// }
-
-// impl Helper for MyHelper {
-
-// }
-
 #[derive(Debug)]
 pub struct Repl {
     editor: Editor<()>,
@@ -26,7 +17,6 @@ impl Default for Repl {
 
 impl Repl {
     pub fn new() -> Self {
-        // let mut rl = ;
         Repl {
             editor: Editor::<()>::new().unwrap(),
             prompt: String::new(),

@@ -3,3 +3,5 @@ sql-data/
 
 Cargo.lock
 *.tar.gz
+
+src/protos/src/protos_code_gen/*.rs

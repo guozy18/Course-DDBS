@@ -1,0 +1,14 @@
+[package]
+name = "runserver"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+protos = { path = "../protos" }
+dbserver = { path = "../server/dbserver" }
+clap = { version = "3.1.6", features = ["derive"] }
+tonic = "0.6.2"
+tokio = { version = "^1.11.0", features = ["rt-multi-thread"] }
+tokio-stream = { version = "0.1.7", features = ["net"]}
+tracing = "0.1.33"
+tracing-subscriber = { version = "0.3.11" , features = ["json", "env-filter"] }

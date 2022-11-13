@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package dbserver;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/wrappers.proto";
+
+/* ----- DATA DEFINITION ----- */
+
+
+/* ----- Request RELEATED DEFINITION ----- */
+message BulkLoadRequest {
+    string data_path = 1;
+}
+
+message BulkLoadResponse {
+    bool result = 1;
+}
+
+service DbServer {
+    // Pings the server.
+    rpc Ping(google.protobuf.Empty) returns (google.protobuf.Empty);
+
+    // Bulk load data
+    rpc BulkLoad(BulkLoadRequest) returns (BulkLoadResponse);
+}
