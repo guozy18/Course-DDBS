@@ -33,22 +33,34 @@ cd scripts && ./init.sh && cd ..
 # 此时可以验证 ./sql-data/ 下已经有了对应shard的.sql
 # 同时docker image ls 也应该能看到hdfs-base, server这样的镜像
 ```
-### docker compose 运行
+### docker 常用命令
 ```shell
 # launch all containers
 cd docker-config
-docker compose up
-
-# 启动后可以验证 mysql 正常工作
-# 注意 mysql1 的 hostname 就是 mysql1，密码是 mysql1，对于 mysql2 类似
-docker run -it --network docker-config_ddbms-network --rm mysql:8.0 mysql -hmysql1 -uroot -p
-docker run -it --network docker-config_ddbms-network --rm mysql:8.0 mysql -hmysql2 -uroot -p
+docker compose -p hjl up
 
 # stop all containers
-cd docker-config
-docker compose stop
+docker compose -p hjl stop
 
 # remove all containers
-cd docker-config
-docker compose down
+docker compose -p hjl down
+
+# restart all containers
+docker compose -p hjl restart
+
+# connect mysql server with mysql client
+docker run -it --network hjl_ddbms-network --rm mysql:8.0 mysql -hmysql1 -uroot -p
+docker run -it --network hjl_ddbms-network --rm mysql:8.0 mysql -hmysql2 -uroot -p
+
+# show the logs of dbserver
+docker compose -p hjl logs server1
+
+# run the client-test or other binary
+docker run -it --rm --network hjl_ddbms-network -v/path/to/Course-DDBS:/root/Course-DDBS:ro server /bin/bash
+
+# show all docker networks
+docker network ls
+
+# show all docker images
+docker image ls
 ```
