@@ -4,9 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+common = { path = "../common" }
 protos = { path = "../protos" }
 async-trait = "0.1.51"
 mysql = "22.2.0"
 tonic = "0.6.2"
 tokio = "1.11"
 tracing = "0.1.33"
+anyhow = "1.0"
+toml = "0.5"
+serde = { version = "1.0", features = ["derive"] }

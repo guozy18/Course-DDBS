@@ -35,12 +35,6 @@ impl Exception {
     }
 }
 
-impl Clone for Exception {
-    fn clone(&self) -> Self {
-        Exception::create(self.code(), self.detail().to_string())
-    }
-}
-
 impl Debug for Exception {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "Code: {}, Detail = {}.", self.code(), self.detail())
@@ -91,22 +85,10 @@ pub enum ServerType {
         #[clap(
             short,
             long,
-            default_value = "localhost:27023",
+            default_value = "0.0.0.0:27023",
             value_name = "HOST:PORT"
         )]
         addr: String,
-        /// DBServer user
-        #[clap(short, long, default_value = "root")]
-        user: String,
-        /// DBServer password
-        #[clap(short, long, default_value = "root")]
-        password: String,
-        /// Mysql url
-        #[clap(short, long, default_value = "localhost:3306")]
-        sql_url: String,
-        /// DBServer database
-        #[clap(short, long, default_value = "mysql")]
-        dbname: String,
     },
 }
 
@@ -115,5 +97,3 @@ pub fn parse_cli_args() -> CliArgs {
     println!("{:#?}", args);
     args
 }
-
-pub type Result<T> = std::result::Result<T, Exception>;

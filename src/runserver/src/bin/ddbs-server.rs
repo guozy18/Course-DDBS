@@ -1,3 +1,4 @@
+use anyhow::Result;
 use std::net::ToSocketAddrs;
 use tokio::net::TcpListener;
 use tokio_stream::wrappers::TcpListenerStream;
@@ -5,7 +6,7 @@ use tonic::transport::Server as TonicServer;
 use tracing_subscriber::{filter::EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 use dbserver::DbServer;
-use runserver::{parse_cli_args, CliArgs, Result, ServerType};
+use runserver::{parse_cli_args, CliArgs, ServerType};
 
 /// Runs Server.
 ///
@@ -19,16 +20,10 @@ async fn run_server(args: CliArgs) -> Result<()> {
     match args.server_type {
         ServerType::Client { .. } => unimplemented!(),
         ServerType::Control { .. } => unimplemented!(),
-        ServerType::DbServer {
-            addr,
-            user,
-            password,
-            sql_url,
-            dbname,
-        } => {
+        ServerType::DbServer { addr } => {
             let addr = addr.to_socket_addrs()?.next().unwrap();
             let incoming_listener = TcpListenerStream::new(TcpListener::bind(addr).await?);
-            let db_service = DbServer::new(user, password, sql_url, dbname);
+            let db_service = DbServer::new();
             let service = protos::db_server_server::DbServerServer::new(db_service);
             TonicServer::builder()
                 .add_service(service)

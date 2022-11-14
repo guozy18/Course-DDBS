@@ -1,6 +1,6 @@
-use protos::db_server_client::DbServerClient;
-use protos::BulkLoadRequest;
-use runserver::Result;
+use anyhow::Result as AnyResult;
+use protos::{db_server_client::DbServerClient, AppTables};
+use protos::{BulkLoadRequest, DbShard, InitServerRequest};
 use tonic::transport::{Channel, Endpoint, Uri};
 
 /// A higher-level test-client implementation.
@@ -14,18 +14,24 @@ impl TestClient {
     ///
     /// # Arguments
     /// * `endpoint`: The server endpoint.
-    pub async fn new(endpoint: Endpoint) -> Result<Self> {
+    pub async fn new(endpoint: Endpoint) -> AnyResult<Self> {
         let client = DbServerClient::connect(endpoint).await?;
         Ok(TestClient { client })
     }
 
     /// Pings the server.
-    pub async fn ping(&mut self) -> Result<()> {
+    pub async fn ping(&mut self) -> AnyResult<()> {
         self.client.ping(()).await?;
         Ok(())
     }
 
-    pub async fn bulk_load(&mut self, req: BulkLoadRequest) -> Result<()> {
+    /// Pings the server.
+    pub async fn init(&mut self, req: InitServerRequest) -> AnyResult<()> {
+        self.client.init(req).await?;
+        Ok(())
+    }
+
+    pub async fn bulk_load(&mut self, req: BulkLoadRequest) -> AnyResult<()> {
         self.client.bulk_load(req).await?;
         Ok(())
     }
@@ -40,20 +46,25 @@ fn format_url(url: &str) -> String {
 }
 
 #[tokio::main]
-pub async fn main() -> Result<()> {
-    let address = "http://127.0.0.1:27023";
+pub async fn main() -> AnyResult<()> {
+    let address = "http://server1:27023";
 
     let endpoint = Channel::builder(format_url(address).parse::<Uri>().unwrap());
     let mut store_client = TestClient::new(endpoint).await?;
 
-    let test_req = BulkLoadRequest {
-        data_path: "/Users/oreki/Desktop/Rust/Course-DDBS/article.txt".to_string(),
-    };
-
     // test ping
     store_client.ping().await?;
 
+    // init
+    let test_req = InitServerRequest {
+        shard: DbShard::One as _,
+    };
+    store_client.init(test_req).await?;
+
     // test bulk_load
+    let test_req = BulkLoadRequest {
+        table: AppTables::User as _,
+    };
     store_client.bulk_load(test_req).await?;
 
     Ok(())

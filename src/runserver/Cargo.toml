@@ -12,3 +12,4 @@ tokio = { version = "^1.11.0", features = ["rt-multi-thread"] }
 tokio-stream = { version = "0.1.7", features = ["net"]}
 tracing = "0.1.33"
 tracing-subscriber = { version = "0.3.11" , features = ["json", "env-filter"] }
+anyhow = "1.0"

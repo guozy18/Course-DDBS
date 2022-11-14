@@ -18,3 +18,4 @@ tonic = { version = "0.6", features = ["tls"] }
 eyre = "0.6.5"
 futures = "0.3.14"
 tracing = "0.1.33"
+anyhow = "1.0"

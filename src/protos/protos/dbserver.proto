@@ -10,8 +10,23 @@ import "google/protobuf/wrappers.proto";
 
 
 /* ----- Request RELEATED DEFINITION ----- */
+enum AppTables {
+    USER = 0;
+    ARTICLE = 1;
+    USER_READ = 2;
+}
+
+enum DBShard {
+    ONE = 0;
+    TWO = 1;
+}
+
+message InitServerRequest {
+    DBShard shard = 1;
+}
+
 message BulkLoadRequest {
-    string data_path = 1;
+    AppTables table = 1;
 }
 
 message BulkLoadResponse {
@@ -21,6 +36,9 @@ message BulkLoadResponse {
 service DbServer {
     // Pings the server.
     rpc Ping(google.protobuf.Empty) returns (google.protobuf.Empty);
+
+    // Init the server.
+    rpc Init(InitServerRequest) returns (google.protobuf.Empty);
 
     // Bulk load data
     rpc BulkLoad(BulkLoadRequest) returns (BulkLoadResponse);

@@ -5,6 +5,7 @@
 
 [workspace]
 members = [
+    "src/common",
     "src/repl",
     "src/runserver",
     "src/protos",

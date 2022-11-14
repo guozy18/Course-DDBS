@@ -1,0 +1,5 @@
+url = "mysql://root:mysql1@mysql1/test"
+db_file_dir = "/root/Course-DDBS/sql-data"
+# create_table_sqls = ["...", "..."]
+db_file_names = ["user_shard1.sql", "article_shard1.sql", "user_read_shard1.sql"]
+# table_names = ["user", "article", "user_read"]

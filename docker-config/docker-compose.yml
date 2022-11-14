@@ -38,9 +38,10 @@ services:
 
   mysql1:
     image: mysql:8.0
-    command: --default-authentication-plugin=mysql_native_password
+    command: --default-authentication-plugin=mysql_native_password --local-infile=ON
     environment:
       MYSQL_ROOT_PASSWORD: mysql1
+      MYSQL_DATABASE: test
     volumes:
       - type: bind
         read_only: true
@@ -50,9 +51,10 @@ services:
       - ddbms-network
   mysql2:
     image: mysql:8.0
-    command: --default-authentication-plugin=mysql_native_password
+    command: --default-authentication-plugin=mysql_native_password --local-infile=ON
     environment:
       MYSQL_ROOT_PASSWORD: mysql2
+      MYSQL_DATABASE: test
     volumes:
       - type: bind
         read_only: true
@@ -63,23 +65,21 @@ services:
 
   # need be able to connect to hdfs and mysql
   # Now only for test purpose
-  # server1:
-  #   image: server
-  #   command: hdfs dfs -ls /ddbms
-  #   # depends_on:
-  #   #   init_hdfs:
-  #   #     condition: service_completed_successfully
-  #   volumes:
-  #     - type: bind
-  #       source: ../
-  #       target: /root/Course-DDBS
-  #   volumes:
-  #     - type: bind
-  #       read_only: true
-  #       source: ../sql-data
-  #       target: /root/sql-data
-  #   networks:
-  #     - ddbms-network
+  server1:
+    image: server
+    command: /root/Course-DDBS/target/debug/ddbs-server db-server
+    # depends_on:
+    #   init_hdfs:
+    #     condition: service_completed_successfully
+    environment:
+      SHARD1_CONFIG_PATH: /root/Course-DDBS/configs/shard1_config.toml
+      SHARDw_CONFIG_PATH: /root/Course-DDBS/configs/shard2_config.toml
+    volumes:
+      - type: bind
+        source: ../
+        target: /root/Course-DDBS
+    networks:
+      - ddbms-network
 
 networks:
   ddbms-network:
