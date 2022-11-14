@@ -1,27 +1,27 @@
 services:
-  namenode:
-    image: hdfs-namenode
-    ports:
-      - "8020:8020"
-      - "9870:9870"
-    networks:
-      - ddbms-network
-    # healthcheck:
-    #   test: ["CMD", "hdfs", "dfs", "-ls", "/"]
-    #   interval: 1m30s
-    #   timeout: 10s
-    #   retries: 3
+  # namenode:
+  #   image: hdfs-namenode
+  #   ports:
+  #     - "8020:8020"
+  #     - "9870:9870"
+  #   networks:
+  #     - ddbms-network
+  #   # healthcheck:
+  #   #   test: ["CMD", "hdfs", "dfs", "-ls", "/"]
+  #   #   interval: 1m30s
+  #   #   timeout: 10s
+  #   #   retries: 3
 
-  datanode1:
-    image: hdfs-base
-    command: hdfs datanode
-    networks:
-      - ddbms-network
-  datanode2:
-    image: hdfs-base
-    command: hdfs datanode
-    networks:
-      - ddbms-network
+  # datanode1:
+  #   image: hdfs-base
+  #   command: hdfs datanode
+  #   networks:
+  #     - ddbms-network
+  # datanode2:
+  #   image: hdfs-base
+  #   command: hdfs datanode
+  #   networks:
+  #     - ddbms-network
 
   # It is too slow to upload data to hdfs
   # for now we use bind volume to simulate all data is in hdfs
