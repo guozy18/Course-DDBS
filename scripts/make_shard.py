@@ -14,6 +14,12 @@ CATEGORY_INDEX_IN_ARTICLE = 4
 
 UID_INDEX_IN_USER_READ = 2
 
+def transform(entry):
+    '''entry: return list of line.split(', ')
+    '''
+    return '|'.join(entry) + '\n'
+
+
 def generate_user_shard(args):
     # Beijing
     s1_uid = []
@@ -28,32 +34,30 @@ def generate_user_shard(args):
 
     while True:
         line = src.readline()
-        s1.write(line)
-        s2.write(line)
         if re.search(r'^INSERT INTO', line):
             break
 
     while True:
         line = src.readline()
-        entry = line.split(', ')
+        entry = line.strip()[1:-2].split(', ')
         if entry[REGION_INDEX_IN_USER] == '"Beijing"':
-            s1.write(line)
+            s1.write(transform(entry))
             s1_uid.append(entry[UID_INDEX_IN_USER])
         else:
             assert(entry[REGION_INDEX_IN_USER] == '"Hong Kong"')
-            s2.write(line)
+            s2.write(transform(entry))
             s2_uid.append(entry[UID_INDEX_IN_USER])
         # uid is in 
         if re.search(r';$', line.strip()):
             break
     
-    while True:
-        line = src.readline()
-        if not line:
-            break
-        else:
-            s1.write(line)
-            s2.write(line)
+    # while True:
+    #     line = src.readline()
+    #     if not line:
+    #         break
+    #     else:
+    #         s1.write(line)
+    #         s2.write(line)
 
     src.close()
     s1.close()
@@ -72,31 +76,21 @@ def generate_article_shard(args):
 
     while True:
         line = src.readline()
-        s1.write(line)
-        s2.write(line)
         if re.search(r'^INSERT INTO', line):
             break
 
     while True:
         line = src.readline()
-        entry = line.split(', ')
-        s1.write(line)
+        entry = line.strip()[1:-2].split(', ')
+        s1.write(transform(entry))
         s1_aid.append(entry[AID_INDEX_IN_ARTICLE])
         if entry[CATEGORY_INDEX_IN_ARTICLE] == '"technology"':
-            s2.write(line)
+            s2.write(transform(entry))
             s2_aid.append(entry[AID_INDEX_IN_ARTICLE])
         # uid is in 
         if re.search(r';$', line.strip()):
             break
     
-    while True:
-        line = src.readline()
-        if not line:
-            break
-        else:
-            s1.write(line)
-            s2.write(line)
-
     src.close()
     s1.close()
     s2.close()
@@ -115,31 +109,21 @@ def generate_user_read_shard(args, s1_uid, s2_uid):
 
     while True:
         line = src.readline()
-        s1.write(line)
-        s2.write(line)
         if re.search(r'^INSERT INTO', line):
             break
 
     while True:
         line = src.readline()
-        entry = line.split(', ')
+        entry = line.strip()[1:-2].split(', ')
         if entry[UID_INDEX_IN_USER_READ] in s1_uid:
-            s1.write(line)
+            s1.write(transform(entry))
         else:
             assert(entry[UID_INDEX_IN_USER_READ] in s2_uid)
-            s2.write(line)
+            s2.write(transform(entry))
         # uid is in 
         if re.search(r';$', line.strip()):
             break
     
-    while True:
-        line = src.readline()
-        if not line:
-            break
-        else:
-            s1.write(line)
-            s2.write(line)
-
     src.close()
     s1.close()
     s2.close()
