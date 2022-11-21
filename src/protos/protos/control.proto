@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package control;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/wrappers.proto";
+import "dbserver.proto";
+
+/* ----- DATA DEFINITION ----- */
+
+
+/* ----- Request RELEATED DEFINITION ----- */
+
+/* ----- Request RELEATED to DB Server ----- */
+message ServerRegisterRequest {
+    string uri = 1;
+}
+
+message ServerRegisterResponse {
+    uint64 server_id = 1;
+}
+
+/* ----- Request RELEATED to Client ----- */
+enum DBStatus {
+    Alive = 0;
+    Faulty = 1;
+}
+
+message DBServerMeta {
+    string uri = 1;
+    optional dbserver.DBShard shard = 2;
+    DBStatus status = 3;
+}
+
+
+message ListServerStatusResponse {
+    map<uint64, DBServerMeta> server_map = 1;
+}
+
+service ControlServer {
+    // Pings the ControlServer.
+    rpc Ping(google.protobuf.Empty) returns (google.protobuf.Empty);
+
+    // Register a DB server.
+    rpc Register(ServerRegisterRequest) returns (ServerRegisterResponse);
+
+    // init two db servers and bulk load all tables
+    rpc ClusterInit(google.protobuf.Empty) returns (google.protobuf.Empty);
+
+    // query all db servers' status
+    rpc ListServerStatus(google.protobuf.Empty) returns (ListServerStatusResponse);
+}

@@ -1,5 +1,4 @@
-use anyhow::Result as AnyResult;
-use common::RuntimeError;
+use common::{Result, RuntimeError};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
@@ -81,7 +80,7 @@ struct TomlConfig {
 }
 
 impl Config {
-    pub fn new(path: impl AsRef<Path>) -> AnyResult<Self> {
+    pub fn new(path: impl AsRef<Path>) -> Result<Self> {
         let toml_content = std::fs::read(path)?;
         let toml_config: TomlConfig = toml::from_slice(&toml_content)?;
         toml_config.verify()
@@ -89,7 +88,7 @@ impl Config {
 }
 
 impl TomlConfig {
-    fn verify(self) -> AnyResult<Config> {
+    fn verify(self) -> Result<Config> {
         let db_file_dir = PathBuf::from(self.db_file_dir.unwrap_or(DB_FILE_DIR.to_string()));
         let create_table_sqls = self
             .create_table_sqls

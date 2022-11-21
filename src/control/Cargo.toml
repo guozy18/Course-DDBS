@@ -2,3 +2,12 @@
 name = "control"
 version = "0.1.0"
 edition = "2021"
+
+[dependencies]
+common = { path = "../common" }
+protos = { path = "../protos" }
+async-trait = "0.1.51"
+tonic = "0.6.2"
+tokio = "1.11"
+tracing = "0.1.33"
+futures = "0.3"

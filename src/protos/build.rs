@@ -10,7 +10,7 @@ fn os_str_to_string(s: impl AsRef<OsStr>) -> String {
 
 fn main() -> Result<(), Box<dyn Error>> {
     // Tells cargo to only rebuild if the proto file changed
-    println!("cargo:rerun-if-changed=dbserver.proto");
+    println!("cargo:rerun-if-changed=protos/");
 
     let protos_path = concat!(env!("CARGO_MANIFEST_DIR"), "/protos");
 
@@ -24,6 +24,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .map(|entry| os_str_to_string(entry.file_name()))
         .collect::<Vec<_>>();
     protos.sort_unstable();
+    dbg!(&protos);
 
     fs::create_dir_all(TARGET_DIR)?;
     tonic_build::configure()

@@ -65,15 +65,45 @@ services:
 
   # need be able to connect to hdfs and mysql
   # Now only for test purpose
+  control:
+    image: server
+    command: /root/Course-DDBS/target/debug/runserver control
+    volumes:
+      - type: bind
+        source: ../
+        target: /root/Course-DDBS
+    networks:
+      - ddbms-network
+
+  # need be able to connect to hdfs and mysql
+  # Now only for test purpose
   server1:
     image: server
-    command: /root/Course-DDBS/target/debug/ddbs-server db-server
-    # depends_on:
+    command: /root/Course-DDBS/target/debug/runserver db-server -a server1:27023 -c http://control:27022
+    depends_on:
+      - control
     #   init_hdfs:
     #     condition: service_completed_successfully
     environment:
       SHARD1_CONFIG_PATH: /root/Course-DDBS/configs/shard1_config.toml
-      SHARDw_CONFIG_PATH: /root/Course-DDBS/configs/shard2_config.toml
+      SHARD2_CONFIG_PATH: /root/Course-DDBS/configs/shard2_config.toml
+    volumes:
+      - type: bind
+        source: ../
+        target: /root/Course-DDBS
+    networks:
+      - ddbms-network
+
+  server2:
+    image: server
+    command: /root/Course-DDBS/target/debug/runserver db-server -a server2:27023 -c http://control:27022
+    depends_on:
+      - control
+    #   init_hdfs:
+    #     condition: service_completed_successfully
+    environment:
+      SHARD1_CONFIG_PATH: /root/Course-DDBS/configs/shard1_config.toml
+      SHARD2_CONFIG_PATH: /root/Course-DDBS/configs/shard2_config.toml
     volumes:
       - type: bind
         source: ../

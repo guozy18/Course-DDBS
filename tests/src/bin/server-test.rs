@@ -61,11 +61,11 @@ pub async fn main() -> AnyResult<()> {
     };
     store_client.init(test_req).await?;
 
-    // test bulk_load
-    let test_req = BulkLoadRequest {
-        table: AppTables::User as _,
-    };
-    store_client.bulk_load(test_req).await?;
+    for table in [AppTables::User, AppTables::Article, AppTables::UserRead] {
+        // test bulk_load
+        let test_req = BulkLoadRequest { table: table as _ };
+        store_client.bulk_load(test_req).await?;
+    }
 
     Ok(())
 }

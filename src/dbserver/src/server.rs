@@ -1,18 +1,18 @@
 use crate::config::Config;
-use anyhow::Result as AnyResult;
-use common::RuntimeError;
+use common::{Result, RuntimeError, ServerId, StatusResult};
 use mysql::prelude::*;
 use mysql::*;
-use protos::db_server_server::DbServer as Server;
-use protos::{AppTables, DbShard};
+use protos::{control_server_client::ControlServerClient, db_server_server::DbServer as Server};
+use protos::{AppTables, DbShard, ServerRegisterRequest};
 use std::{fs, io::Write};
-use tokio::sync::OnceCell;
+use tokio::sync::{Mutex as AsyncMutex, OnceCell};
+use tonic::transport::{Channel, Uri};
 use tonic::{Request, Response, Status};
 use tracing::{info, trace};
 
-pub type StatusResult<T> = core::result::Result<T, Status>;
-
 pub struct DbServer {
+    control_client: AsyncMutex<ControlServerClient<Channel>>,
+    /// state that need init
     inner: OnceCell<Inner>,
 }
 
@@ -23,13 +23,40 @@ struct Inner {
 }
 
 impl DbServer {
-    pub fn new() -> Self {
-        DbServer {
+    /// - `control_uri`: Uri of control server
+    /// - `uri`: Uri of this server
+    pub async fn new(control_uri: Uri, uri: Uri) -> Result<Self> {
+        let mut control_client = {
+            let ep = Channel::builder(control_uri);
+            let client = ControlServerClient::connect(ep)
+                .await
+                .map_err(|e| RuntimeError::TonicConnectError { source: e })?;
+            client
+        };
+        control_client
+            .register(ServerRegisterRequest { uri: uri.to_string() })
+            .await?;
+        Ok(DbServer {
+            control_client: AsyncMutex::new(control_client),
             inner: OnceCell::new(),
-        }
+        })
     }
 
-    async fn init(&self, shard: DbShard) -> AnyResult<()> {
+    /// This function is a workaround.
+    /// Because DBServer cannot get the listenning address of the Real Server.
+    pub async fn register(&self, uri: Uri) -> Result<ServerId> {
+        let mut client = self.control_client.lock().await;
+        let server_id = client
+            .register(ServerRegisterRequest {
+                uri: uri.to_string(),
+            })
+            .await?
+            .into_inner()
+            .server_id;
+        Ok(server_id)
+    }
+
+    async fn init(&self, shard: DbShard) -> Result<()> {
         if self.inner.initialized() {
             Err(RuntimeError::Initialized)?;
         }
@@ -51,9 +78,9 @@ impl DbServer {
         Ok(())
     }
 
-    async fn load_tables(&self, table: i32) -> AnyResult<AppTables> {
-        let app_table =
-            AppTables::from_i32(table).ok_or(Status::invalid_argument("table is invalid"))?;
+    async fn load_tables(&self, table: i32) -> Result<AppTables> {
+        let app_table = AppTables::from_i32(table)
+            .ok_or(RuntimeError::RpcInvalidArg("table is invalid".to_owned()))?;
         info!("start load table: {:?}", app_table);
 
         let inner = self.inner.get().ok_or(RuntimeError::Uninitialize)?;
@@ -104,9 +131,7 @@ impl Server for DbServer {
         let protos::InitServerRequest { shard } = req.into_inner();
         let shard = DbShard::from_i32(shard).ok_or(Status::invalid_argument("shard is invalid"))?;
         info!("init server for shard: {:?}", shard);
-        self.init(shard)
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+        self.init(shard).await?;
         Ok(Response::new(()))
     }
 
@@ -116,9 +141,7 @@ impl Server for DbServer {
         req: Request<protos::BulkLoadRequest>,
     ) -> StatusResult<Response<protos::BulkLoadResponse>> {
         let protos::BulkLoadRequest { table } = req.into_inner();
-        self.load_tables(table)
-            .await
-            .map_err(|e| Status::internal(e.to_string()))?;
+        self.load_tables(table).await?;
         Ok(Response::new(protos::BulkLoadResponse { result: true }))
     }
 }
