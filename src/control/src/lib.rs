@@ -17,6 +17,8 @@ use tonic::transport::{Channel, Uri};
 use tonic::{Request, Response};
 use tracing::info;
 
+mod query;
+
 
 pub struct ControlService {
     inner: Inner,
@@ -121,7 +123,7 @@ impl ControlService {
                 .zip(clients)
                 .map(|((sid, _), c)| (sid, c)),
         );
-        info!(log_str);
+        info!("{log_str}");
         Ok(())
     }
 }

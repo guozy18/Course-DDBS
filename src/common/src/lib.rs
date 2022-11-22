@@ -24,6 +24,10 @@ pub enum RuntimeError {
     },
     #[error(transparent)]
     TonicStatus(#[from] tonic::Status),
+    #[error(transparent)]
+    SqlParserError(#[from] sqlparser::parser::ParserError),
+    #[error("unsupport sql statement {0}")]
+    UnsupportSql(String),
     #[error("mysql internal error: {0}")]
     MysqlError(#[from] mysql::Error),
     #[error(transparent)]

@@ -17,7 +17,7 @@ UID_INDEX_IN_USER_READ = 2
 def transform(entry):
     '''entry: return list of line.split(', ')
     '''
-    return '|'.join(entry) + '\n'
+    return '|'.join([x.strip('"') for x in entry]) + '\n'
 
 
 def generate_user_shard(args):
