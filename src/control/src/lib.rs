@@ -1,24 +1,27 @@
-use common::{Result, RuntimeError, StatusResult, ServerId};
+use common::{Result, RuntimeError, ServerId, StatusResult};
 use futures::stream::{FuturesOrdered, TryStreamExt};
 use protos::{
     control_server_server::ControlServer, db_server_client::DbServerClient, ServerRegisterRequest,
     ServerRegisterResponse,
 };
 use protos::{
-    AppTables, BulkLoadRequest, DbServerMeta, DbStatus, InitServerRequest, ListServerStatusResponse,
+    AppTables, BulkLoadRequest, DbServerMeta, DbShard, DbStatus, InitServerRequest,
+    ListServerStatusResponse,
 };
 use std::collections::HashMap;
-use std::sync::Mutex;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
-    RwLock,
+    Arc, RwLock,
 };
+use tokio::sync::Mutex as AsyncMutex;
 use tonic::transport::{Channel, Uri};
 use tonic::{Request, Response};
 use tracing::info;
 
+mod complex;
 mod query;
 
+type DbClient = Arc<AsyncMutex<DbServerClient<Channel>>>;
 
 pub struct ControlService {
     inner: Inner,
@@ -26,7 +29,7 @@ pub struct ControlService {
 
 struct Inner {
     db_server_meta: RwLock<HashMap<ServerId, DbServerMeta>>,
-    clients: Mutex<HashMap<ServerId, DbServerClient<Channel>>>,
+    clients: RwLock<HashMap<ServerId, DbClient>>,
     next_server_id: AtomicU64,
 }
 
@@ -35,7 +38,7 @@ impl ControlService {
         Self {
             inner: Inner {
                 db_server_meta: RwLock::new(Default::default()),
-                clients: Mutex::new(Default::default()),
+                clients: RwLock::new(Default::default()),
                 next_server_id: AtomicU64::new(0),
             },
         }
@@ -72,10 +75,12 @@ impl ControlService {
         let mut log_str: String = String::from("cluster init: ");
         // check the server status
         let target_servers = {
-            let mut metas = self.inner.db_server_meta.write().unwrap();
-            let mut alive_servers = metas
-                .iter_mut()
+            let metas = self.inner.db_server_meta.read().unwrap();
+            let alive_servers = metas
+                .iter()
                 .filter(|(_, meta)| meta.status() == DbStatus::Alive)
+                .take(2)
+                .map(|(sid, meta)| (*sid, meta.clone()))
                 .collect::<Vec<_>>();
             if alive_servers.len() < 2 {
                 return Err(RuntimeError::ServerNotAlive);
@@ -86,26 +91,16 @@ impl ControlService {
             {
                 return Err(RuntimeError::Initialized);
             }
-            // update the shard of the first two server
-            for (shard, (_, meta)) in alive_servers.iter_mut().enumerate().take(2) {
-                meta.shard = Some(shard as _);
-                log_str += &format!("server {} with shard {:?}, ", meta.uri, meta.shard());
-            }
             alive_servers
-                .into_iter()
-                .map(|(sid, meta)| (*sid, meta.clone()))
-                // only takes the first two servers
-                .take(2)
-                .collect::<Vec<_>>()
         };
+        debug_assert_eq!(target_servers.len(), 2);
         // create the tonic clients and bulk load tables
         let futures = target_servers
             .iter()
-            .map(|(_, meta)| async move {
+            .zip([DbShard::One, DbShard::Two])
+            .map(|((sid, meta), shard)| async move {
                 let mut client = Self::create_client(&meta.uri).await?;
-                // SAFETY: shard must be assigned
-                let shard = meta.shard.unwrap();
-                client.init(InitServerRequest { shard }).await?;
+                client.init(InitServerRequest { shard: shard as _ }).await?;
                 // bulk load the tables
                 for table in [AppTables::User, AppTables::Article, AppTables::UserRead] {
                     let req = BulkLoadRequest {
@@ -113,18 +108,39 @@ impl ControlService {
                     };
                     client.bulk_load(req).await?;
                 }
-                Ok::<DbServerClient<Channel>, RuntimeError>(client)
+                Ok::<(ServerId, DbClient), RuntimeError>((*sid, Arc::new(AsyncMutex::new(client))))
             })
             .collect::<FuturesOrdered<_>>();
         let clients = futures.try_collect::<Vec<_>>().await?;
-        self.inner.clients.lock().unwrap().extend(
-            target_servers
-                .into_iter()
-                .zip(clients)
-                .map(|((sid, _), c)| (sid, c)),
-        );
+
+        // update inner state
+        self.inner.clients.write().unwrap().extend(clients);
+        let mut metas = self.inner.db_server_meta.write().unwrap();
+        for ((id, m), shard) in target_servers.iter().zip([DbShard::One, DbShard::Two]) {
+            metas.entry(*id).and_modify(|meta| meta.set_shard(shard));
+            log_str += &format!("server {} with shard {:?}, ", m.uri, shard);
+        }
         info!("{log_str}");
         Ok(())
+    }
+
+    /// check whether the cluster has been initialized
+    /// Return the (server id of shard one, server id of shard two)
+    fn check_init(&self) -> Result<(ServerId, ServerId)> {
+        let metas = self.inner.db_server_meta.read().unwrap();
+        let shard_one = metas
+            .iter()
+            .find(|(_, meta)| {
+                meta.status() == DbStatus::Alive && meta.shard == Some(DbShard::One as _)
+            })
+            .ok_or(RuntimeError::Uninitialize)?;
+        let shard_two = metas
+            .iter()
+            .find(|(_, meta)| {
+                meta.status() == DbStatus::Alive && meta.shard == Some(DbShard::Two as _)
+            })
+            .ok_or(RuntimeError::Uninitialize)?;
+        Ok((*shard_one.0, *shard_two.0))
     }
 }
 
@@ -147,13 +163,20 @@ impl ControlServer for ControlService {
         &self,
         _: Request<()>,
     ) -> StatusResult<Response<ListServerStatusResponse>> {
-        info!("recv list server status");
+        info!("recv list server status req");
         let res = self.list_server_status()?;
         Ok(Response::new(res))
     }
 
     async fn cluster_init(&self, _: Request<()>) -> StatusResult<Response<()>> {
+        info!("recv cluster init req");
         self.cluster_init().await?;
+        Ok(Response::new(()))
+    }
+
+    async fn generate_be_read_table(&self, _: Request<()>) -> StatusResult<Response<()>> {
+        info!("recv generate be read table req");
+        self.generate_be_read_table().await?;
         Ok(Response::new(()))
     }
 }

@@ -1,11 +1,19 @@
 use crate::config::Config;
-use common::{Result, RuntimeError, ServerId, StatusResult};
+use common::{BeRead, Result, RuntimeError, ServerId, StatusResult};
+use flexbuffers::FlexbufferSerializer;
+use futures::Stream;
 use mysql::prelude::*;
 use mysql::*;
 use protos::{control_server_client::ControlServerClient, db_server_server::DbServer as Server};
 use protos::{AppTables, DbShard, ServerRegisterRequest};
+use serde::Serialize;
+use std::pin::Pin;
 use std::{fs, io::Write};
-use tokio::sync::{Mutex as AsyncMutex, OnceCell};
+use tokio::sync::{
+    mpsc::{self, Receiver},
+    Mutex as AsyncMutex, OnceCell,
+};
+use tokio_stream::{wrappers::ReceiverStream, StreamExt};
 use tonic::transport::{Channel, Uri};
 use tonic::{Request, Response, Status};
 use tracing::{info, trace};
@@ -17,7 +25,7 @@ pub struct DbServer {
 }
 
 struct Inner {
-    _shard: DbShard,
+    shard: DbShard,
     config: Config,
     connection_pool: Pool,
 }
@@ -34,7 +42,9 @@ impl DbServer {
             client
         };
         control_client
-            .register(ServerRegisterRequest { uri: uri.to_string() })
+            .register(ServerRegisterRequest {
+                uri: uri.to_string(),
+            })
             .await?;
         Ok(DbServer {
             control_client: AsyncMutex::new(control_client),
@@ -42,8 +52,9 @@ impl DbServer {
         })
     }
 
-    /// This function is a workaround.
-    /// Because DBServer cannot get the listenning address of the Real Server.
+    /// This function is a workaround,
+    /// since DBServer cannot get the listenning address of the Real Server.
+    /// - `uri`: uri of this server
     pub async fn register(&self, uri: Uri) -> Result<ServerId> {
         let mut client = self.control_client.lock().await;
         let server_id = client
@@ -57,8 +68,10 @@ impl DbServer {
     }
 
     async fn init(&self, shard: DbShard) -> Result<()> {
-        if self.inner.initialized() {
-            Err(RuntimeError::Initialized)?;
+        match self.inner.get() {
+            Some(inner) if inner.shard == shard => return Ok(()),
+            Some(_) => return Err(RuntimeError::Initialized),
+            None => {}
         }
         let config_path = match shard {
             DbShard::One => std::env::var("SHARD1_CONFIG_PATH")?,
@@ -66,10 +79,15 @@ impl DbServer {
         };
         let config = Config::new(config_path)?;
         let pool = Pool::new(config.url.as_str())?;
+        // load the procedure
+        for procedure in super::config::STORE_PROCEDURE {
+            pool.get_conn()?.query_drop(procedure)?;
+        }
+        trace!("load all the procedure");
         self.inner
             .get_or_init(move || async move {
                 Inner {
-                    _shard: shard,
+                    shard,
                     config,
                     connection_pool: pool,
                 }
@@ -78,16 +96,20 @@ impl DbServer {
         Ok(())
     }
 
+    fn get_inner(&self) -> Result<&Inner> {
+        self.inner.get().ok_or(RuntimeError::Uninitialize)
+    }
+
     async fn load_tables(&self, table: i32) -> Result<AppTables> {
         let app_table = AppTables::from_i32(table)
             .ok_or(RuntimeError::RpcInvalidArg("table is invalid".to_owned()))?;
         info!("start load table: {:?}", app_table);
 
-        let inner = self.inner.get().ok_or(RuntimeError::Uninitialize)?;
+        let inner = self.get_inner()?;
 
         // Step 1: create table
         let sql = &inner.config.create_table_sqls[table as usize];
-        let mut conn = inner.connection_pool.get_conn().unwrap();
+        let mut conn = inner.connection_pool.get_conn()?;
         trace!("start query: {}", sql);
         conn.query_drop(sql)?;
 
@@ -117,10 +139,66 @@ impl DbServer {
 
         Ok(app_table)
     }
+
+    fn generate_be_read_stream(&self, sql: String) -> Result<Receiver<Result<Vec<u8>>>> {
+        let inner = self.get_inner()?;
+        let mut conn = inner.connection_pool.get_conn()?;
+        let (tx, rx) = mpsc::channel(64);
+        tokio::task::spawn_blocking(move || {
+            let mut query_result = match conn.exec_iter(sql, ()) {
+                Ok(x) => x,
+                Err(e) => {
+                    tx.blocking_send(Err(e.into())).ok();
+                    return;
+                }
+            };
+            let result_set = query_result.iter().unwrap();
+            for row in result_set {
+                let entry = match row {
+                    Ok(mut row) => {
+                        let mut s = FlexbufferSerializer::new();
+                        BeRead::from(&mut row).map(|be_read| {
+                            be_read.serialize(&mut s).expect("serialize error");
+                            s.take_buffer()
+                        })
+                    }
+                    Err(e) => Err(e.into()),
+                };
+                if tx.blocking_send(entry).is_err() {
+                    return;
+                }
+            }
+            debug_assert!(query_result.iter().is_none());
+        });
+        Ok(rx)
+    }
+
+    fn scan_be_read(&self) -> Result<Receiver<Result<Vec<u8>>>> {
+        self.generate_be_read_stream(
+            "SELECT aid, readNum, readUidList, commentNum, commentUidList, agreeNum, agreeUidList, shareNum, shareUidList
+            FROM be_read".to_owned()
+        )
+    }
+
+    fn generate_be_read(&self) -> Result<Receiver<Result<Vec<u8>>>> {
+        self.generate_be_read_stream("
+            SELECT aid, count(uid), GROUP_CONCAT(uid), count(IF(commentOrNot=1, 1, NULL)), GROUP_CONCAT(IF(commentOrNot=1, uid, NULL)),
+            count(IF(agreeOrNot=1, 1, NULL)), GROUP_CONCAT(IF(agreeOrNot = 1, uid, NULL)), count(IF(shareOrNot=1, 1, NULL)), GROUP_CONCAT(IF(shareOrNot = 1, uid, NULL))
+            FROM user_read GROUP BY aid".to_owned())
+    }
+
+    fn execute_sql(&self, sql: String) -> Result<()> {
+        let inner = self.get_inner()?;
+        let mut conn = inner.connection_pool.get_conn()?;
+        conn.query_drop(sql)?;
+        Ok(())
+    }
 }
 
 #[tonic::async_trait]
 impl Server for DbServer {
+    type GenerateBeReadStream = Pin<Box<dyn Stream<Item = StatusResult<Vec<u8>>> + Send>>;
+    type ScanBeReadStream = Pin<Box<dyn Stream<Item = StatusResult<Vec<u8>>> + Send>>;
     /// Ping Server
     async fn ping(&self, _: Request<()>) -> StatusResult<Response<()>> {
         info!("receive ping");
@@ -143,5 +221,30 @@ impl Server for DbServer {
         let protos::BulkLoadRequest { table } = req.into_inner();
         self.load_tables(table).await?;
         Ok(Response::new(protos::BulkLoadResponse { result: true }))
+    }
+
+    async fn scan_be_read(&self, _: Request<()>) -> StatusResult<Response<Self::ScanBeReadStream>> {
+        trace!("get scan_be_read");
+        let rx = self.scan_be_read()?;
+        Ok(Response::new(Box::pin(
+            ReceiverStream::new(rx).map(|entry| entry.map_err(|e| e.into())),
+        )))
+    }
+
+    async fn generate_be_read(
+        &self,
+        _: Request<()>,
+    ) -> StatusResult<Response<Self::GenerateBeReadStream>> {
+        trace!("get generate_be_read");
+        let rx = self.generate_be_read()?;
+        Ok(Response::new(Box::pin(
+            ReceiverStream::new(rx).map(|entry| entry.map_err(|e| e.into())),
+        )))
+    }
+
+    async fn execute_sql(&self, req: Request<String>) -> StatusResult<Response<()>> {
+        trace!("get execute_sql: {:?}", req.get_ref());
+        self.execute_sql(req.into_inner())?;
+        Ok(Response::new(()))
     }
 }

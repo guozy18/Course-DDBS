@@ -68,10 +68,13 @@ services:
   control:
     image: server
     command: /root/Course-DDBS/target/debug/runserver control
+    stop_signal: SIGKILL
     volumes:
       - type: bind
         source: ../
         target: /root/Course-DDBS
+    environment:
+      RUST_LOG: info,control=trace
     networks:
       - ddbms-network
 
@@ -80,6 +83,7 @@ services:
   server1:
     image: server
     command: /root/Course-DDBS/target/debug/runserver db-server -a server1:27023 -c http://control:27022
+    stop_signal: SIGKILL
     depends_on:
       - control
     #   init_hdfs:
@@ -87,6 +91,7 @@ services:
     environment:
       SHARD1_CONFIG_PATH: /root/Course-DDBS/configs/shard1_config.toml
       SHARD2_CONFIG_PATH: /root/Course-DDBS/configs/shard2_config.toml
+      RUST_LOG: info,dbserver=trace
     volumes:
       - type: bind
         source: ../
@@ -97,6 +102,7 @@ services:
   server2:
     image: server
     command: /root/Course-DDBS/target/debug/runserver db-server -a server2:27023 -c http://control:27022
+    stop_signal: SIGKILL
     depends_on:
       - control
     #   init_hdfs:
@@ -104,6 +110,7 @@ services:
     environment:
       SHARD1_CONFIG_PATH: /root/Course-DDBS/configs/shard1_config.toml
       SHARD2_CONFIG_PATH: /root/Course-DDBS/configs/shard2_config.toml
+      RUST_LOG: info,dbserver=trace
     volumes:
       - type: bind
         source: ../

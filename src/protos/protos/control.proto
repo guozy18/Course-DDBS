@@ -50,4 +50,6 @@ service ControlServer {
 
     // query all db servers' status
     rpc ListServerStatus(google.protobuf.Empty) returns (ListServerStatusResponse);
+
+    rpc GenerateBeReadTable(google.protobuf.Empty) returns (google.protobuf.Empty);
 }

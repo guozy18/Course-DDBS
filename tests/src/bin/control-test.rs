@@ -1,5 +1,5 @@
 use anyhow::Result as AnyResult;
-use protos::{control_server_client::ControlServerClient};
+use protos::control_server_client::ControlServerClient;
 use protos::{DbStatus, ListServerStatusResponse};
 use std::time::Instant;
 use tonic::transport::{Channel, Endpoint, Uri};
@@ -26,7 +26,6 @@ impl TestClient {
         Ok(())
     }
 
-    /// Pings the server.
     pub async fn cluster_init(&mut self) -> AnyResult<()> {
         self.client.cluster_init(()).await?;
         Ok(())
@@ -34,6 +33,11 @@ impl TestClient {
 
     pub async fn list_server_status(&mut self) -> AnyResult<ListServerStatusResponse> {
         Ok(self.client.list_server_status(()).await?.into_inner())
+    }
+
+    pub async fn generate_be_read_table(&mut self) -> AnyResult<()> {
+        self.client.generate_be_read_table(()).await?;
+        Ok(())
     }
 }
 
@@ -78,5 +82,9 @@ pub async fn main() -> AnyResult<()> {
         );
     }
     println!("init the cluster elapsed: {:?}", start.elapsed());
+
+    let start = Instant::now();
+    client.generate_be_read_table().await?;
+    println!("generate be read table elapsed: {:?}", start.elapsed());
     Ok(())
 }

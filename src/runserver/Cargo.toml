@@ -12,5 +12,8 @@ tonic = "0.6.2"
 tokio = { version = "^1.11.0", features = ["rt-multi-thread"] }
 tokio-stream = { version = "0.1.7", features = ["net"]}
 tracing = "0.1.33"
-tracing-subscriber = { version = "0.3.11" , features = ["json", "env-filter"] }
+tracing-subscriber = { version = "0.3.11" , features = ["json", "env-filter", "local-time"] }
+tracing-log = "0.1"
+crossterm = "0.25"
+time = { version = "0.3", features = ["macros"] }
 anyhow = "1.0"

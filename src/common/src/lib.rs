@@ -1,7 +1,10 @@
-use std::env::VarError;
+use std::{env::VarError, str::Utf8Error};
 
 use thiserror::Error;
 use tonic::Status;
+
+mod db_types;
+pub use db_types::BeRead;
 
 #[derive(Error, Debug)]
 pub enum RuntimeError {
@@ -28,6 +31,10 @@ pub enum RuntimeError {
     SqlParserError(#[from] sqlparser::parser::ParserError),
     #[error("unsupport sql statement {0}")]
     UnsupportSql(String),
+    #[error("parse return value from database get error: {0}")]
+    DBTypeParseError(String),
+    #[error(transparent)]
+    DeserializationError(#[from] flexbuffers::DeserializationError),
     #[error("mysql internal error: {0}")]
     MysqlError(#[from] mysql::Error),
     #[error(transparent)]
@@ -47,5 +54,10 @@ impl From<RuntimeError> for Status {
     }
 }
 
+impl From<Utf8Error> for RuntimeError {
+    fn from(e: Utf8Error) -> Self {
+        RuntimeError::DBTypeParseError(e.to_string())
+    }
+}
 
 pub type ServerId = u64;

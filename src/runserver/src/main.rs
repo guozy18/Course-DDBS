@@ -1,11 +1,22 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use crossterm::style::Stylize;
 use std::fmt::Debug;
 use std::net::ToSocketAddrs;
+use std::time::SystemTime;
+use time::{macros::format_description, OffsetDateTime};
 use tokio::net::TcpListener;
 use tokio_stream::wrappers::TcpListenerStream;
 use tonic::transport::{Server as TonicServer, Uri};
-use tracing_subscriber::{filter::EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing::{subscriber::Subscriber, Event};
+use tracing_log::NormalizeEvent;
+use tracing_subscriber::{
+    fmt::{self, format::Writer, FmtContext, FormatEvent, FormatFields},
+    layer::SubscriberExt,
+    registry::LookupSpan,
+    util::SubscriberInitExt,
+    EnvFilter,
+};
 
 use control::ControlService;
 use dbserver::DbServer;
@@ -33,7 +44,7 @@ pub enum ServerType {
     },
     #[clap(about = "Run as a DBMS Server daemon")]
     DbServer {
-        #[clap(short, long, help = "the uri of the control uri")]
+        #[clap(short, long, help = "the uri of the control")]
         control_uri: Uri,
         /// DBServer address
         #[clap(
@@ -91,6 +102,45 @@ async fn run_server(args: CliArgs) -> Result<()> {
     Ok(())
 }
 
+struct SimpleFmt;
+
+impl<S, N> FormatEvent<S, N> for SimpleFmt
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+    N: for<'a> FormatFields<'a> + 'static,
+{
+    fn format_event(
+        &self,
+        ctx: &FmtContext<'_, S, N>,
+        mut writer: Writer<'_>,
+        event: &Event<'_>,
+    ) -> std::fmt::Result {
+        // Create timestamp
+        let time_format = format_description!(
+            "[month]-[day] [hour repr:24]:[minute]:[second].[subsecond digits:3]"
+        );
+        let time_now = OffsetDateTime::from(SystemTime::now());
+        let time_now = time_now.format(time_format).unwrap();
+
+        // Get line numbers from log crate events
+        let normalized_meta = event.normalized_metadata();
+        let meta = normalized_meta.as_ref().unwrap_or_else(|| event.metadata());
+
+        // Write formatted log record
+        let message = format!(
+            "[{}] {} {}{}{} ",
+            time_now.grey(),
+            meta.level().to_string().blue(),
+            meta.file().unwrap_or("").to_string().yellow(),
+            String::from(":").yellow(),
+            meta.line().unwrap_or(0).to_string().yellow(),
+        );
+        write!(writer, "{}", message)?;
+        ctx.format_fields(writer.by_ref(), event)?;
+        writeln!(writer)
+    }
+}
+
 #[tokio::main]
 pub async fn main() -> Result<()> {
     // Init the tracing subscriber.
@@ -101,7 +151,7 @@ pub async fn main() -> Result<()> {
     };
 
     tracing_subscriber::registry()
-        .with(fmt::layer())
+        .with(fmt::layer().event_format(SimpleFmt))
         .with(filter)
         .init();
 

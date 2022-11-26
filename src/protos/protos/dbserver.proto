@@ -14,6 +14,7 @@ enum AppTables {
     USER = 0;
     ARTICLE = 1;
     USER_READ = 2;
+    BE_READ=3;
 }
 
 enum DBShard {
@@ -42,4 +43,15 @@ service DbServer {
 
     // Bulk load data
     rpc BulkLoad(BulkLoadRequest) returns (BulkLoadResponse);
+
+    // scan tuples of be_read table
+    rpc ScanBeRead(google.protobuf.Empty) returns (stream google.protobuf.BytesValue);
+    
+    // get stream which produce a stream of tuples of be_read table
+    // this rpc do not access be_read table, it aggregate from user_read table
+    rpc GenerateBeRead(google.protobuf.Empty) returns (stream google.protobuf.BytesValue);
+
+    // execute a sql statement without any return value
+    // typically used for insert or update
+    rpc ExecuteSql(google.protobuf.StringValue) returns (google.protobuf.Empty);
 }
