@@ -51,15 +51,13 @@ impl ControlService {
         // first to check init state
         let (dbms1, dbms2) = self.check_init()?;
         trace!("dbms1 = {dbms1}, dbms2 = {dbms2}");
-        let (dbms1, dbms2) = {
+        let (mut dbms1, mut dbms2) = {
             let clients = self.inner.clients.read().unwrap();
             (
                 clients.get(&dbms1).unwrap().clone(),
                 clients.get(&dbms2).unwrap().clone(),
             )
         };
-        let mut dbms1 = dbms1.lock().await;
-        let mut dbms2 = dbms2.lock().await;
 
         // be_read_table:
         // article.category="science" allocated to DBMS1 and DBMS2

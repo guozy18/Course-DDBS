@@ -5,13 +5,12 @@ use protos::{
 };
 use protos::{DbServerMeta, ListServerStatusResponse};
 use std::collections::HashMap;
-use std::sync::{atomic::AtomicU64, Arc, RwLock};
-use tokio::sync::Mutex as AsyncMutex;
+use std::sync::{atomic::AtomicU64, RwLock};
 use tonic::transport::Channel;
 use tonic::{Request, Response};
 use tracing::info;
 
-type DbClient = Arc<AsyncMutex<DbServerClient<Channel>>>;
+type DbClient = DbServerClient<Channel>;
 
 pub struct ControlService {
     pub inner: Inner,
@@ -79,6 +78,7 @@ impl ControlServer for ControlService {
 
     // Query Related
     async fn exec(&self, req: Request<ExecRequest>) -> StatusResult<Response<ExecResponse>> {
+        // let ExecRequest { statement } = req.into_inner();
         let result = self.exec(req.into_inner()).await?;
         Ok(Response::new(ExecResponse { result }))
     }

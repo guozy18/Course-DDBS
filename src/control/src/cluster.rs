@@ -6,12 +6,11 @@ use protos::{
     AppTables, BulkLoadRequest, DbServerMeta, DbShard, DbStatus, InitServerRequest,
     ListServerStatusResponse,
 };
-use std::sync::{atomic::Ordering, Arc};
-use tokio::sync::Mutex as AsyncMutex;
+use std::sync::atomic::Ordering;
 use tonic::transport::{Channel, Uri};
 use tracing::info;
 
-type DbClient = Arc<AsyncMutex<DbServerClient<Channel>>>;
+type DbClient = DbServerClient<Channel>;
 
 impl ControlService {
     pub fn register(&self, req: ServerRegisterRequest) -> Result<ServerId> {
@@ -66,7 +65,7 @@ impl ControlService {
                     };
                     client.bulk_load(req).await?;
                 }
-                Ok::<(ServerId, DbClient), RuntimeError>((*sid, Arc::new(AsyncMutex::new(client))))
+                Ok::<(ServerId, DbClient), RuntimeError>((*sid, client))
             })
             .collect::<FuturesOrdered<_>>();
         let clients = futures.try_collect::<Vec<_>>().await?;

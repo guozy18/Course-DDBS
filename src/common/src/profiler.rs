@@ -44,7 +44,7 @@ impl Profiler {
         interval
     }
 
-    pub fn parser_finished(&mut self) {
+    pub fn parse_finished(&mut self) {
         self.profile.parser_time = self.phase_time();
     }
 
