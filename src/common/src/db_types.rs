@@ -39,18 +39,16 @@ fn get_row_value<T>(row: &mut Row, idx: usize) -> Result<T>
 where
     T: FromValue,
 {
-    let v = row.take(idx).ok_or(RuntimeError::DBTypeParseError(format!(
-        "cannot get idx {idx} of row: {row:?}"
-    )))?;
+    let v = row.take(idx).ok_or_else(|| {
+        RuntimeError::DBTypeParseError(format!("cannot get idx {idx} of row: {row:?}"))
+    })?;
     from_value_opt(v).map_err(|e| RuntimeError::DBTypeParseError(e.to_string()))
 }
 
 fn get_row_bytes(row: &Row, idx: usize) -> Result<&[u8]> {
-    let value = row
-        .as_ref(idx)
-        .ok_or(RuntimeError::DBTypeParseError(format!(
-            "cannot get idx {idx} of row: {row:?}"
-        )))?;
+    let value = row.as_ref(idx).ok_or_else(|| {
+        RuntimeError::DBTypeParseError(format!("cannot get idx {idx} of row: {row:?}"))
+    })?;
     match value {
         Value::Bytes(v) => Ok(v),
         Value::NULL => Ok(&[]),

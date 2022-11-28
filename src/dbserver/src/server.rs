@@ -36,10 +36,9 @@ impl DbServer {
     pub async fn new(control_uri: Uri, uri: Uri) -> Result<Self> {
         let mut control_client = {
             let ep = Channel::builder(control_uri);
-            let client = ControlServerClient::connect(ep)
+            ControlServerClient::connect(ep)
                 .await
-                .map_err(|e| RuntimeError::TonicConnectError { source: e })?;
-            client
+                .map_err(|e| RuntimeError::TonicConnectError { source: e })?
         };
         control_client
             .register(ServerRegisterRequest {
@@ -102,7 +101,7 @@ impl DbServer {
 
     async fn load_tables(&self, table: i32) -> Result<AppTables> {
         let app_table = AppTables::from_i32(table)
-            .ok_or(RuntimeError::RpcInvalidArg("table is invalid".to_owned()))?;
+            .ok_or_else(|| RuntimeError::RpcInvalidArg("table is invalid".to_owned()))?;
         info!("start load table: {:?}", app_table);
 
         let inner = self.get_inner()?;
@@ -207,7 +206,8 @@ impl Server for DbServer {
 
     async fn init(&self, req: Request<protos::InitServerRequest>) -> StatusResult<Response<()>> {
         let protos::InitServerRequest { shard } = req.into_inner();
-        let shard = DbShard::from_i32(shard).ok_or(Status::invalid_argument("shard is invalid"))?;
+        let shard =
+            DbShard::from_i32(shard).ok_or_else(|| Status::invalid_argument("shard is invalid"))?;
         info!("init server for shard: {:?}", shard);
         self.init(shard).await?;
         Ok(Response::new(()))

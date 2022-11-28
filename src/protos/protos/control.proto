@@ -21,6 +21,17 @@ message ServerRegisterResponse {
     uint64 server_id = 1;
 }
 
+/* ----- Request RELEATED to SQL query ----- */
+message ExecRequest {
+    // sql query statetment to execute
+    string statement = 1;
+}
+
+message ExecResponse {
+    // query result in JSON format
+    string result = 1;
+}
+
 /* ----- Request RELEATED to Client ----- */
 enum DBStatus {
     Alive = 0;
@@ -52,4 +63,7 @@ service ControlServer {
     rpc ListServerStatus(google.protobuf.Empty) returns (ListServerStatusResponse);
 
     rpc GenerateBeReadTable(google.protobuf.Empty) returns (google.protobuf.Empty);
+    
+    // Exec SQL query
+    rpc Exec(ExecRequest) returns (ExecResponse);
 }

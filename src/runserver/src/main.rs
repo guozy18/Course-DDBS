@@ -30,12 +30,6 @@ pub struct CliArgs {
 
 #[derive(Subcommand, Debug)]
 pub enum ServerType {
-    #[clap(about = "Run as a Client daemon")]
-    Client {
-        /// Client address
-        #[clap(long, default_value = "127.0.0.1:27021", value_name = "HOST:PORT")]
-        addr: String,
-    },
     #[clap(about = "Run as a Control daemon")]
     Control {
         /// Controler address
@@ -73,7 +67,6 @@ pub fn parse_cli_args() -> CliArgs {
 ///listener.
 async fn run_server(args: CliArgs) -> Result<()> {
     match args.server_type {
-        ServerType::Client { .. } => unimplemented!(),
         ServerType::Control { addr } => {
             let addr = addr.to_socket_addrs()?.next().unwrap();
             let incoming_listener = TcpListenerStream::new(TcpListener::bind(addr).await?);

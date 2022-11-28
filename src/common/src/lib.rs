@@ -4,7 +4,9 @@ use thiserror::Error;
 use tonic::Status;
 
 mod db_types;
+mod profiler;
 pub use db_types::BeRead;
+pub use profiler::Profiler;
 
 #[derive(Error, Debug)]
 pub enum RuntimeError {

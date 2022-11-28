@@ -2,7 +2,7 @@ use common::{Result, RuntimeError};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
-static DB_FILE_DIR: &'static str = "/root/sql-data";
+static DB_FILE_DIR: &str = "/root/sql-data";
 
 pub static CREATE_TABLE_SQLS: [&str; 3] = [
     "
@@ -112,13 +112,14 @@ impl Config {
 
 impl TomlConfig {
     fn verify(self) -> Result<Config> {
-        let db_file_dir = PathBuf::from(self.db_file_dir.unwrap_or(DB_FILE_DIR.to_string()));
+        let db_file_dir =
+            PathBuf::from(self.db_file_dir.unwrap_or_else(|| DB_FILE_DIR.to_string()));
         let create_table_sqls = self
             .create_table_sqls
-            .unwrap_or(CREATE_TABLE_SQLS.map(|x| x.to_string()).to_vec());
+            .unwrap_or_else(|| CREATE_TABLE_SQLS.map(|x| x.to_string()).to_vec());
         let table_names = self
             .table_names
-            .unwrap_or(TBLAE_NAMES.map(|x| x.to_string()).to_vec());
+            .unwrap_or_else(|| TBLAE_NAMES.map(|x| x.to_string()).to_vec());
 
         if table_names.len() != create_table_sqls.len() {
             Err(RuntimeError::ConfigError(
@@ -132,7 +133,7 @@ impl TomlConfig {
         }
         Ok(Config {
             url: self.url,
-            db_file_dir: db_file_dir,
+            db_file_dir,
             create_table_sqls,
             db_file_names: self.db_file_names,
             table_names,
