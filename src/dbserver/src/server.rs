@@ -1,11 +1,11 @@
 use crate::config::Config;
-use common::{BeRead, Result, RuntimeError, ServerId, StatusResult};
+use common::{MyRow, Result, RuntimeError, ServerId, StatusResult};
 use flexbuffers::FlexbufferSerializer;
 use futures::Stream;
 use mysql::prelude::*;
 use mysql::*;
 use protos::{control_server_client::ControlServerClient, db_server_server::DbServer as Server};
-use protos::{AppTables, DbShard, ServerRegisterRequest};
+use protos::{AppTables, DbShard, ExecSqlFirstResponse, ServerRegisterRequest};
 use serde::Serialize;
 use std::pin::Pin;
 use std::{fs, io::Write};
@@ -140,7 +140,8 @@ impl DbServer {
         Ok(app_table)
     }
 
-    fn generate_be_read_stream(&self, sql: String) -> Result<Receiver<Result<Vec<u8>>>> {
+    fn sql_result_stream(&self, sql: String) -> Result<Receiver<Result<Vec<u8>>>> {
+        trace!("sql result stream: {sql}");
         let inner = self.get_inner()?;
         let mut conn = inner.connection_pool.get_conn()?;
         let (tx, rx) = mpsc::channel(64);
@@ -155,12 +156,11 @@ impl DbServer {
             let result_set = query_result.iter().unwrap();
             for row in result_set {
                 let entry = match row {
-                    Ok(mut row) => {
+                    Ok(row) => {
                         let mut s = FlexbufferSerializer::new();
-                        BeRead::from(&mut row).map(|be_read| {
-                            be_read.serialize(&mut s).expect("serialize error");
-                            s.take_buffer()
-                        })
+                        let my_row: MyRow = row.into();
+                        my_row.serialize(&mut s).expect("serialize error");
+                        Ok(s.take_buffer())
                     }
                     Err(e) => Err(e.into()),
                 };
@@ -173,32 +173,31 @@ impl DbServer {
         Ok(rx)
     }
 
-    fn scan_be_read(&self) -> Result<Receiver<Result<Vec<u8>>>> {
-        self.generate_be_read_stream(
-            "SELECT aid, readNum, readUidList, commentNum, commentUidList, agreeNum, agreeUidList, shareNum, shareUidList
-            FROM be_read".to_owned()
-        )
-    }
-
-    fn generate_be_read(&self) -> Result<Receiver<Result<Vec<u8>>>> {
-        self.generate_be_read_stream("
-            SELECT aid, count(uid), GROUP_CONCAT(uid), count(IF(commentOrNot=1, 1, NULL)), GROUP_CONCAT(IF(commentOrNot=1, uid, NULL)),
-            count(IF(agreeOrNot=1, 1, NULL)), GROUP_CONCAT(IF(agreeOrNot = 1, uid, NULL)), count(IF(shareOrNot=1, 1, NULL)), GROUP_CONCAT(IF(shareOrNot = 1, uid, NULL))
-            FROM user_read GROUP BY aid".to_owned())
-    }
-
-    fn execute_sql(&self, sql: String) -> Result<()> {
+    fn execute_sql_drop(&self, sql: String) -> Result<()> {
+        trace!("exec sql drop: {sql}");
         let inner = self.get_inner()?;
         let mut conn = inner.connection_pool.get_conn()?;
         conn.query_drop(sql)?;
         Ok(())
     }
+
+    fn exec_sql_first(&self, sql: String) -> Result<ExecSqlFirstResponse> {
+        trace!("exec sql first: {sql}");
+        let inner = self.get_inner()?;
+        let mut conn = inner.connection_pool.get_conn()?;
+        let my_row = conn.exec_first(sql, ())?.map(|row: Row| {
+            let mut s = FlexbufferSerializer::new();
+            let my_row: MyRow = row.into();
+            my_row.serialize(&mut s).expect("serialize error");
+            s.take_buffer()
+        });
+        Ok(ExecSqlFirstResponse { row: my_row })
+    }
 }
 
 #[tonic::async_trait]
 impl Server for DbServer {
-    type GenerateBeReadStream = Pin<Box<dyn Stream<Item = StatusResult<Vec<u8>>> + Send>>;
-    type ScanBeReadStream = Pin<Box<dyn Stream<Item = StatusResult<Vec<u8>>> + Send>>;
+    type ExecSqlStream = Pin<Box<dyn Stream<Item = StatusResult<Vec<u8>>> + Send>>;
     /// Ping Server
     async fn ping(&self, _: Request<()>) -> StatusResult<Response<()>> {
         info!("receive ping");
@@ -223,28 +222,26 @@ impl Server for DbServer {
         Ok(Response::new(protos::BulkLoadResponse { result: true }))
     }
 
-    async fn scan_be_read(&self, _: Request<()>) -> StatusResult<Response<Self::ScanBeReadStream>> {
-        trace!("get scan_be_read");
-        let rx = self.scan_be_read()?;
+    async fn exec_sql(&self, sql: Request<String>) -> StatusResult<Response<Self::ExecSqlStream>> {
+        info!("get exec_sql request");
+        let rx = self.sql_result_stream(sql.into_inner())?;
         Ok(Response::new(Box::pin(
             ReceiverStream::new(rx).map(|entry| entry.map_err(|e| e.into())),
         )))
     }
 
-    async fn generate_be_read(
+    async fn exec_sql_first(
         &self,
-        _: Request<()>,
-    ) -> StatusResult<Response<Self::GenerateBeReadStream>> {
-        trace!("get generate_be_read");
-        let rx = self.generate_be_read()?;
-        Ok(Response::new(Box::pin(
-            ReceiverStream::new(rx).map(|entry| entry.map_err(|e| e.into())),
-        )))
+        req: Request<String>,
+    ) -> StatusResult<Response<ExecSqlFirstResponse>> {
+        info!("get exec_sql_first request");
+        let response = self.exec_sql_first(req.into_inner())?;
+        Ok(Response::new(response))
     }
 
-    async fn execute_sql(&self, req: Request<String>) -> StatusResult<Response<()>> {
-        trace!("get execute_sql: {:?}", req.get_ref());
-        self.execute_sql(req.into_inner())?;
+    async fn exec_sql_drop(&self, req: Request<String>) -> StatusResult<Response<()>> {
+        info!("get execute_sql");
+        self.execute_sql_drop(req.into_inner())?;
         Ok(Response::new(()))
     }
 }

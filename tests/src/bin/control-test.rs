@@ -3,6 +3,7 @@ use protos::control_server_client::ControlServerClient;
 use protos::{DbStatus, ListServerStatusResponse};
 use std::time::Instant;
 use tonic::transport::{Channel, Endpoint, Uri};
+use common::TemporalGranularity;
 
 /// A higher-level test-client implementation.
 #[derive(Debug, Clone)]
@@ -39,6 +40,13 @@ impl TestClient {
         self.client.generate_be_read_table(()).await?;
         Ok(())
     }
+
+    pub async fn generate_popular_table(&mut self, granularity: TemporalGranularity) -> AnyResult<()> {
+        self.client.generate_popular_table(granularity as i32).await?;
+        Ok(())
+    }
+
+    // pub async fn generate_popular_table(&mut self)
 }
 
 fn format_url(url: &str) -> String {
@@ -83,8 +91,20 @@ pub async fn main() -> AnyResult<()> {
     }
     println!("init the cluster elapsed: {:?}", start.elapsed());
 
+    // let start = Instant::now();
+    // client.generate_be_read_table().await?;
+    // println!("generate be read table elapsed: {:?}", start.elapsed());
+
+    // let start = Instant::now();
+    // client.generate_popular_table(TemporalGranularity::Monthly).await?;
+    // println!("generate monthly popular table: {:?}", start.elapsed());
+
     let start = Instant::now();
-    client.generate_be_read_table().await?;
-    println!("generate be read table elapsed: {:?}", start.elapsed());
+    client.generate_popular_table(TemporalGranularity::Weekly).await?;
+    println!("generate weekly popular table: {:?}", start.elapsed());
+
+    // let start = Instant::now();
+    // client.generate_popular_table(TemporalGranularity::Daily).await?;
+    // println!("generate daily popular table: {:?}", start.elapsed());
     Ok(())
 }

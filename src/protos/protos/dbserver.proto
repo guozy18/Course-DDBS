@@ -34,6 +34,10 @@ message BulkLoadResponse {
     bool result = 1;
 }
 
+message ExecSqlFirstResponse {
+    optional google.protobuf.BytesValue row = 1;
+}
+
 service DbServer {
     // Pings the server.
     rpc Ping(google.protobuf.Empty) returns (google.protobuf.Empty);
@@ -44,14 +48,13 @@ service DbServer {
     // Bulk load data
     rpc BulkLoad(BulkLoadRequest) returns (BulkLoadResponse);
 
-    // scan tuples of be_read table
-    rpc ScanBeRead(google.protobuf.Empty) returns (stream google.protobuf.BytesValue);
-    
-    // get stream which produce a stream of tuples of be_read table
-    // this rpc do not access be_read table, it aggregate from user_read table
-    rpc GenerateBeRead(google.protobuf.Empty) returns (stream google.protobuf.BytesValue);
+    // Execute the specified sql and return the rows
+    rpc ExecSql(google.protobuf.StringValue) returns (stream google.protobuf.BytesValue);
+
+    // Execute the specified sql and return the first rows
+    rpc ExecSqlFirst(google.protobuf.StringValue) returns (ExecSqlFirstResponse);
 
     // execute a sql statement without any return value
     // typically used for insert or update
-    rpc ExecuteSql(google.protobuf.StringValue) returns (google.protobuf.Empty);
+    rpc ExecSqlDrop(google.protobuf.StringValue) returns (google.protobuf.Empty);
 }

@@ -52,4 +52,6 @@ service ControlServer {
     rpc ListServerStatus(google.protobuf.Empty) returns (ListServerStatusResponse);
 
     rpc GenerateBeReadTable(google.protobuf.Empty) returns (google.protobuf.Empty);
+
+    rpc GeneratePopularTable(google.protobuf.Int32Value) returns (google.protobuf.Empty);
 }

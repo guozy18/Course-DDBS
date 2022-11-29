@@ -1,4 +1,4 @@
-use common::{Result, RuntimeError, ServerId, StatusResult};
+use common::{Result, RuntimeError, ServerId, StatusResult, TemporalGranularity};
 use futures::stream::{FuturesOrdered, TryStreamExt};
 use protos::{
     control_server_server::ControlServer, db_server_client::DbServerClient, ServerRegisterRequest,
@@ -21,7 +21,8 @@ use tracing::info;
 mod complex;
 mod query;
 
-type DbClient = Arc<AsyncMutex<DbServerClient<Channel>>>;
+type DbClient = DbServerClient<Channel>;
+type SharedDbClient = Arc<AsyncMutex<DbClient>>;
 
 pub struct ControlService {
     inner: Inner,
@@ -29,7 +30,7 @@ pub struct ControlService {
 
 struct Inner {
     db_server_meta: RwLock<HashMap<ServerId, DbServerMeta>>,
-    clients: RwLock<HashMap<ServerId, DbClient>>,
+    clients: RwLock<HashMap<ServerId, SharedDbClient>>,
     next_server_id: AtomicU64,
 }
 
@@ -108,7 +109,7 @@ impl ControlService {
                     };
                     client.bulk_load(req).await?;
                 }
-                Ok::<(ServerId, DbClient), RuntimeError>((*sid, Arc::new(AsyncMutex::new(client))))
+                Ok::<(ServerId, SharedDbClient), RuntimeError>((*sid, Arc::new(AsyncMutex::new(client))))
             })
             .collect::<FuturesOrdered<_>>();
         let clients = futures.try_collect::<Vec<_>>().await?;
@@ -177,6 +178,14 @@ impl ControlServer for ControlService {
     async fn generate_be_read_table(&self, _: Request<()>) -> StatusResult<Response<()>> {
         info!("recv generate be read table req");
         self.generate_be_read_table().await?;
+        Ok(Response::new(()))
+    }
+
+    async fn generate_popular_table(&self, req: Request<i32>) -> StatusResult<Response<()>> {
+        let req = req.into_inner();
+        let granularity = TemporalGranularity::try_from(req)?;
+        info!("recv generate popular table: {}", granularity);
+        self.generate_popular_table(granularity).await?;
         Ok(Response::new(()))
     }
 }

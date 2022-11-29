@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 protos = { path = "../src/protos" }
 dbserver = { path = "../src/dbserver" }
+common = { path = "../src/common" }
 csv = "1.1.6"
 async-channel = "1.6.1"
 clap = { version = "3.0", features = ["derive"] }
