@@ -28,7 +28,7 @@ impl ControlService {
                     db_clients.get(&server_id).unwrap().clone()
                 };
                 async move {
-                    let resp = dbms_client.execute_sql(sql).await?;
+                    let resp = dbms_client.exec_sql_drop(sql).await?;
                     StatusResult::<_>::Ok(resp.into_inner())
                 }
             })

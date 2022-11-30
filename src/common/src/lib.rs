@@ -1,12 +1,14 @@
-use std::{env::VarError, str::Utf8Error};
+use std::{env::VarError, fmt::Display, str::Utf8Error};
 
 use thiserror::Error;
 use tonic::Status;
 
 mod db_types;
 mod profiler;
-pub use db_types::BeRead;
+pub mod utils;
+
 pub use profiler::Profiler;
+pub use db_types::{BeRead, MyDate, MyRow, PopularArticle, ValueAdaptor, ValueDef};
 
 #[derive(Error, Debug)]
 pub enum RuntimeError {
@@ -18,6 +20,8 @@ pub enum RuntimeError {
     Uninitialize,
     #[error("rpc invalid argument: {0}")]
     RpcInvalidArg(String),
+    #[error("invalid argument: {0}")]
+    InvalidArg(String),
     #[error("number of server is not enough or some server is down")]
     ServerNotAlive,
     #[error(transparent)]
@@ -63,3 +67,73 @@ impl From<Utf8Error> for RuntimeError {
 }
 
 pub type ServerId = u64;
+
+#[repr(i32)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum TemporalGranularity {
+    Daily = 0,
+    Weekly,
+    Monthly,
+}
+
+impl TemporalGranularity {
+    pub fn top_num(&self) -> usize {
+        match self {
+            Self::Daily => 3,
+            Self::Weekly => 5,
+            Self::Monthly => 10,
+        }
+    }
+
+    /// - `column_name` column_name of timestamp
+    pub fn to_column_sql(&self, column_name: &str) -> String {
+        match self {
+            Self::Daily => format!(
+                "DATE(FROM_UNIXTIME(CAST({} as unsigned) DIV 1000))",
+                column_name
+            ),
+            Self::Weekly => format!(
+                "YEARWEEK(FROM_UNIXTIME(CAST({} as unsigned) DIV 1000))",
+                column_name
+            ),
+            Self::Monthly => format!(
+                "EXTRACT(YEAR_MONTH FROM FROM_UNIXTIME(CAST({} as unsigned) DIV 1000))",
+                column_name
+            ),
+        }
+    }
+
+    pub fn batch_size(&self) -> usize {
+        match self {
+            Self::Daily => 40,
+            Self::Weekly => 20,
+            Self::Monthly => 20,
+        }
+    }
+}
+
+impl Display for TemporalGranularity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::Daily => "daily",
+            Self::Weekly => "weekly",
+            Self::Monthly => "monthly",
+        };
+        write!(f, "{}", s)
+    }
+}
+
+impl TryFrom<i32> for TemporalGranularity {
+    type Error = RuntimeError;
+
+    fn try_from(v: i32) -> Result<Self> {
+        match v {
+            x if x == Self::Daily as i32 => Ok(Self::Daily),
+            x if x == Self::Weekly as i32 => Ok(Self::Weekly),
+            x if x == Self::Monthly as i32 => Ok(Self::Monthly),
+            _ => Err(RuntimeError::InvalidArg(format!(
+                "cannot convert {v} into TemporalGranularity"
+            ))),
+        }
+    }
+}

@@ -66,4 +66,6 @@ service ControlServer {
     
     // Exec SQL query
     rpc Exec(ExecRequest) returns (ExecResponse);
+
+    rpc GeneratePopularTable(google.protobuf.Int32Value) returns (google.protobuf.Empty);
 }

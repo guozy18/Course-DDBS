@@ -1,16 +1,15 @@
-use common::{ServerId, StatusResult};
+use crate::DbClient;
+use common::{ServerId, StatusResult, TemporalGranularity};
 use protos::{
-    control_server_server::ControlServer, db_server_client::DbServerClient, ExecRequest,
+    control_server_server::ControlServer, ExecRequest,
     ExecResponse, ServerRegisterRequest, ServerRegisterResponse,
 };
 use protos::{DbServerMeta, ListServerStatusResponse};
 use std::collections::HashMap;
 use std::sync::{atomic::AtomicU64, RwLock};
-use tonic::transport::Channel;
 use tonic::{Request, Response};
 use tracing::info;
 
-type DbClient = DbServerClient<Channel>;
 
 pub struct ControlService {
     pub inner: Inner,
@@ -81,5 +80,13 @@ impl ControlServer for ControlService {
         // let ExecRequest { statement } = req.into_inner();
         let result = self.exec(req.into_inner()).await?;
         Ok(Response::new(ExecResponse { result }))
+    }
+
+    async fn generate_popular_table(&self, req: Request<i32>) -> StatusResult<Response<()>> {
+        let req = req.into_inner();
+        let granularity = TemporalGranularity::try_from(req)?;
+        info!("recv generate popular table: {}", granularity);
+        self.generate_popular_table(granularity).await?;
+        Ok(Response::new(()))
     }
 }

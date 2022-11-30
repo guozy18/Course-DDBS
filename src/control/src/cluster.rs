@@ -28,6 +28,18 @@ impl ControlService {
         Ok(next_server_id)
     }
 
+    pub fn list_server_status(&self) -> Result<ListServerStatusResponse> {
+        let server_map = self.inner.db_server_meta.read().unwrap().clone();
+        Ok(ListServerStatusResponse { server_map })
+    }
+
+    pub async fn create_client(uri: impl AsRef<str>) -> Result<DbServerClient<Channel>> {
+        let ep = Channel::builder(uri.as_ref().parse::<Uri>()?);
+        Ok(DbServerClient::connect(ep)
+            .await
+            .map_err(|e| RuntimeError::TonicConnectError { source: e })?)
+    }
+
     pub async fn cluster_init(&self) -> Result<()> {
         let mut log_str: String = String::from("cluster init: ");
         // check the server status
@@ -81,34 +93,4 @@ impl ControlService {
         Ok(())
     }
 
-    async fn create_client(uri: impl AsRef<str>) -> Result<DbServerClient<Channel>> {
-        let ep = Channel::builder(uri.as_ref().parse::<Uri>()?);
-        DbServerClient::connect(ep)
-            .await
-            .map_err(|e| RuntimeError::TonicConnectError { source: e })
-    }
-
-    pub fn list_server_status(&self) -> Result<ListServerStatusResponse> {
-        let server_map = self.inner.db_server_meta.read().unwrap().clone();
-        Ok(ListServerStatusResponse { server_map })
-    }
-
-    /// check whether the cluster has been initialized
-    /// Return the (server id of shard one, server id of shard two)
-    pub fn check_init(&self) -> Result<(ServerId, ServerId)> {
-        let metas = self.inner.db_server_meta.read().unwrap();
-        let shard_one = metas
-            .iter()
-            .find(|(_, meta)| {
-                meta.status() == DbStatus::Alive && meta.shard == Some(DbShard::One as _)
-            })
-            .ok_or(RuntimeError::Uninitialize)?;
-        let shard_two = metas
-            .iter()
-            .find(|(_, meta)| {
-                meta.status() == DbStatus::Alive && meta.shard == Some(DbShard::Two as _)
-            })
-            .ok_or(RuntimeError::Uninitialize)?;
-        Ok((*shard_one.0, *shard_two.0))
-    }
 }

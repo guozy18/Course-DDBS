@@ -1,11 +1,12 @@
 [package]
-name = "tools"
+name = "db_tests"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 protos = { path = "../src/protos" }
 dbserver = { path = "../src/dbserver" }
+common = { path = "../src/common" }
 csv = "1.1.6"
 async-channel = "1.6.1"
 clap = { version = "3.0", features = ["derive"] }
@@ -18,3 +19,4 @@ eyre = "0.6.5"
 futures = "0.3.14"
 tracing = "0.1.33"
 anyhow = "1.0"
+mysql = "22.2.0"
