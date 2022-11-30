@@ -109,7 +109,10 @@ impl ControlService {
                     };
                     client.bulk_load(req).await?;
                 }
-                Ok::<(ServerId, SharedDbClient), RuntimeError>((*sid, Arc::new(AsyncMutex::new(client))))
+                Ok::<(ServerId, SharedDbClient), RuntimeError>((
+                    *sid,
+                    Arc::new(AsyncMutex::new(client)),
+                ))
             })
             .collect::<FuturesOrdered<_>>();
         let clients = futures.try_collect::<Vec<_>>().await?;

@@ -34,6 +34,11 @@ message BulkLoadResponse {
     bool result = 1;
 }
 
+message ExecSqlBatchRequest {
+    string sql = 1;
+    uint64 batch_size = 2;
+}
+
 message ExecSqlFirstResponse {
     optional google.protobuf.BytesValue row = 1;
 }
@@ -48,8 +53,16 @@ service DbServer {
     // Bulk load data
     rpc BulkLoad(BulkLoadRequest) returns (BulkLoadResponse);
 
+    // Execute the specified sql and return the rows in stream
+    // Useful when large or known size of returned rows
+    rpc StreamExecSql(google.protobuf.StringValue) returns (stream google.protobuf.BytesValue);
+
     // Execute the specified sql and return the rows
-    rpc ExecSql(google.protobuf.StringValue) returns (stream google.protobuf.BytesValue);
+    rpc ExecSql(google.protobuf.StringValue) returns (google.protobuf.BytesValue);
+
+    // Execute the specified sql and return the rows in batch stream
+    // Useful when bottleneck is network when using StreamExecSql
+    rpc ExecSqlBatch(ExecSqlBatchRequest) returns (stream google.protobuf.BytesValue);
 
     // Execute the specified sql and return the first rows
     rpc ExecSqlFirst(google.protobuf.StringValue) returns (ExecSqlFirstResponse);

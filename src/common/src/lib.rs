@@ -1,11 +1,11 @@
-use std::{env::VarError, str::Utf8Error, fmt::Display};
+use std::{env::VarError, fmt::Display, str::Utf8Error};
 
 use thiserror::Error;
 use tonic::Status;
 
 mod db_types;
 pub mod utils;
-pub use db_types::{BeRead, ValueDef, ValueAdaptor, MyRow, PopularArticle, MyDate};
+pub use db_types::{BeRead, MyDate, MyRow, PopularArticle, ValueAdaptor, ValueDef};
 
 #[derive(Error, Debug)]
 pub enum RuntimeError {
@@ -97,6 +97,14 @@ impl TemporalGranularity {
                 "EXTRACT(YEAR_MONTH FROM FROM_UNIXTIME(CAST({} as unsigned) DIV 1000))",
                 column_name
             ),
+        }
+    }
+
+    pub fn batch_size(&self) -> usize {
+        match self {
+            Self::Daily => 40,
+            Self::Weekly => 20,
+            Self::Monthly => 20,
         }
     }
 }

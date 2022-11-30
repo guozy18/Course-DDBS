@@ -1,11 +1,14 @@
 use crate::config::Config;
+use common::utils::BatchStream;
 use common::{MyRow, Result, RuntimeError, ServerId, StatusResult};
 use flexbuffers::FlexbufferSerializer;
 use futures::Stream;
 use mysql::prelude::*;
 use mysql::*;
 use protos::{control_server_client::ControlServerClient, db_server_server::DbServer as Server};
-use protos::{AppTables, DbShard, ExecSqlFirstResponse, ServerRegisterRequest};
+use protos::{
+    AppTables, DbShard, ExecSqlBatchRequest, ExecSqlFirstResponse, ServerRegisterRequest,
+};
 use serde::Serialize;
 use std::pin::Pin;
 use std::{fs, io::Write};
@@ -100,6 +103,7 @@ impl DbServer {
         self.inner.get().ok_or(RuntimeError::Uninitialize)
     }
 
+    #[aux_macro::elapsed]
     async fn load_tables(&self, table: i32) -> Result<AppTables> {
         let app_table = AppTables::from_i32(table)
             .ok_or(RuntimeError::RpcInvalidArg("table is invalid".to_owned()))?;
@@ -140,7 +144,7 @@ impl DbServer {
         Ok(app_table)
     }
 
-    fn sql_result_stream(&self, sql: String) -> Result<Receiver<Result<Vec<u8>>>> {
+    fn sql_result_stream(&self, sql: String) -> Result<Receiver<Result<MyRow>>> {
         trace!("sql result stream: {sql}");
         let inner = self.get_inner()?;
         let mut conn = inner.connection_pool.get_conn()?;
@@ -157,10 +161,11 @@ impl DbServer {
             for row in result_set {
                 let entry = match row {
                     Ok(row) => {
-                        let mut s = FlexbufferSerializer::new();
-                        let my_row: MyRow = row.into();
-                        my_row.serialize(&mut s).expect("serialize error");
-                        Ok(s.take_buffer())
+                        Ok(row.into())
+                        // let mut s = FlexbufferSerializer::new();
+                        // let my_row: MyRow = row.into();
+                        // my_row.serialize(&mut s).expect("serialize error");
+                        // Ok(s.take_buffer())
                     }
                     Err(e) => Err(e.into()),
                 };
@@ -173,6 +178,7 @@ impl DbServer {
         Ok(rx)
     }
 
+    #[aux_macro::elapsed]
     fn execute_sql_drop(&self, sql: String) -> Result<()> {
         trace!("exec sql drop: {sql}");
         let inner = self.get_inner()?;
@@ -181,6 +187,7 @@ impl DbServer {
         Ok(())
     }
 
+    #[aux_macro::elapsed]
     fn exec_sql_first(&self, sql: String) -> Result<ExecSqlFirstResponse> {
         trace!("exec sql first: {sql}");
         let inner = self.get_inner()?;
@@ -193,14 +200,30 @@ impl DbServer {
         });
         Ok(ExecSqlFirstResponse { row: my_row })
     }
+
+    #[aux_macro::elapsed]
+    fn exec_sql(&self, sql: String) -> Result<Vec<u8>> {
+        trace!("exec sql: {sql}");
+        let inner = self.get_inner()?;
+        let mut conn = inner.connection_pool.get_conn()?;
+        let my_row_vec: Vec<MyRow> = conn
+            .exec(sql, ())?
+            .into_iter()
+            .map(|row: Row| row.into())
+            .collect();
+        let mut s = FlexbufferSerializer::new();
+        my_row_vec.serialize(&mut s).expect("serialize error");
+        Ok(s.take_buffer())
+    }
 }
 
 #[tonic::async_trait]
 impl Server for DbServer {
-    type ExecSqlStream = Pin<Box<dyn Stream<Item = StatusResult<Vec<u8>>> + Send>>;
+    type StreamExecSqlStream = Pin<Box<dyn Stream<Item = StatusResult<Vec<u8>>> + Send>>;
+    type ExecSqlBatchStream = Pin<Box<dyn Stream<Item = StatusResult<Vec<u8>>> + Send>>;
     /// Ping Server
+    #[aux_macro::elapsed]
     async fn ping(&self, _: Request<()>) -> StatusResult<Response<()>> {
-        info!("receive ping");
         Ok(Response::new(()))
     }
 
@@ -222,25 +245,51 @@ impl Server for DbServer {
         Ok(Response::new(protos::BulkLoadResponse { result: true }))
     }
 
-    async fn exec_sql(&self, sql: Request<String>) -> StatusResult<Response<Self::ExecSqlStream>> {
-        info!("get exec_sql request");
+    async fn stream_exec_sql(
+        &self,
+        sql: Request<String>,
+    ) -> StatusResult<Response<Self::StreamExecSqlStream>> {
         let rx = self.sql_result_stream(sql.into_inner())?;
-        Ok(Response::new(Box::pin(
-            ReceiverStream::new(rx).map(|entry| entry.map_err(|e| e.into())),
-        )))
+        let stream = ReceiverStream::new(rx).map(|entry| {
+            Ok(entry.map(|my_row| {
+                let mut s = FlexbufferSerializer::new();
+                my_row.serialize(&mut s).expect("serialize error");
+                s.take_buffer()
+            })?)
+        });
+        Ok(Response::new(Box::pin(stream)))
+    }
+
+    async fn exec_sql(&self, sql: Request<String>) -> StatusResult<Response<Vec<u8>>> {
+        let response = self.exec_sql(sql.into_inner())?;
+        Ok(Response::new(response))
+    }
+
+    async fn exec_sql_batch(
+        &self,
+        sql: Request<ExecSqlBatchRequest>,
+    ) -> StatusResult<Response<Self::ExecSqlBatchStream>> {
+        let ExecSqlBatchRequest { sql, batch_size } = sql.into_inner();
+        let rx = self.sql_result_stream(sql)?;
+        let stream =
+            BatchStream::new(ReceiverStream::new(rx), batch_size as usize).map(|my_row_vec| {
+                let my_row_vec = my_row_vec.into_iter().collect::<Result<Vec<MyRow>>>()?;
+                let mut s = FlexbufferSerializer::new();
+                my_row_vec.serialize(&mut s).expect("serialize error");
+                Ok(s.take_buffer())
+            });
+        Ok(Response::new(Box::pin(stream)))
     }
 
     async fn exec_sql_first(
         &self,
         req: Request<String>,
     ) -> StatusResult<Response<ExecSqlFirstResponse>> {
-        info!("get exec_sql_first request");
         let response = self.exec_sql_first(req.into_inner())?;
         Ok(Response::new(response))
     }
 
     async fn exec_sql_drop(&self, req: Request<String>) -> StatusResult<Response<()>> {
-        info!("get execute_sql");
         self.execute_sql_drop(req.into_inner())?;
         Ok(Response::new(()))
     }

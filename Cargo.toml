@@ -5,6 +5,7 @@
 
 [workspace]
 members = [
+    "src/aux-macro",
     "src/common",
     "src/repl",
     "src/runserver",

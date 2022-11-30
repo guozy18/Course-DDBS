@@ -1,5 +1,5 @@
 use super::{Result, RuntimeError};
-use mysql::{from_value_opt, prelude::FromValue, Row, Value, FromValueError};
+use mysql::{from_value_opt, prelude::FromValue, FromValueError, Row, Value};
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::Display,
@@ -107,7 +107,9 @@ impl MyRow {
             Ok(val) => Ok(val),
             Err(FromValueError(val)) => {
                 self.get_mut(idx).unwrap().replace(ValueAdaptor::new(val));
-                Err(RuntimeError::DBTypeParseError(format!("cannot parse idx {idx} to desired type")))
+                Err(RuntimeError::DBTypeParseError(format!(
+                    "cannot parse idx {idx} to desired type"
+                )))
             }
         }
     }

@@ -1,12 +1,11 @@
 use crate::{ControlService, DbClient};
-use common::{
-    utils::BatchStream, BeRead, MyDate, MyRow, PopularArticle, Result, RuntimeError, StatusResult,
-    TemporalGranularity,
-};
+use common::{BeRead, MyDate, MyRow, PopularArticle, Result, RuntimeError, TemporalGranularity};
 use flexbuffers::Reader;
 use futures::{join, StreamExt};
+use itertools::{join, Itertools};
+use protos::ExecSqlBatchRequest;
 use serde::Deserialize;
-use std::collections::{BinaryHeap, HashSet};
+use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::time::Instant;
 use tracing::trace;
 
@@ -32,6 +31,8 @@ impl ControlService {
         // read table:
         // user.region="Beijing" allocated to DBMS1
         // user.region="Hongkong" allocated to DBMS2
+
+        // first we populate dbms2 since it contains all be_read tuples
         dbms2
             .exec_sql_drop(
                 "
@@ -60,36 +61,36 @@ impl ControlService {
             )
             .await?;
         trace!("generate_be_read_table: DBMS2 create the be_read_table");
-        let bytes_array_to_sql = |arr: Vec<Vec<u8>>| -> Result<String> {
-            Ok(arr
-                .into_iter()
-                .map(|row| {
-                    let reader = Reader::get_root(row.as_slice()).unwrap();
-                    match MyRow::deserialize(reader) {
-                        Ok(mut row) => BeRead::from(&mut row)
-                            .map(|be_read| format!("CALL insert_be_read({be_read});")),
-                        Err(e) => Err(e.into()),
-                    }
-                })
-                .reduce(|acc, item| match (acc, item) {
-                    (Ok(acc), Ok(item)) => Ok(acc + &item),
-                    (Err(e), _) | (_, Err(e)) => Err(e),
-                })
-                .unwrap()?)
+        let bytes_array_to_sql = |arr: Vec<u8>| -> Result<String> {
+            let reader = Reader::get_root(arr.as_slice()).unwrap();
+            match Vec::<MyRow>::deserialize(reader) {
+                Ok(mut row) => Ok(row
+                    .iter_mut()
+                    .map(|mut my_row| {
+                        BeRead::from(&mut my_row)
+                            .map(|be_read| format!("CALL insert_be_read({be_read});"))
+                    })
+                    .collect::<Result<Vec<_>>>()?
+                    .concat()),
+                Err(e) => Err(e.into()),
+            }
         };
 
-        // first we populate dbms2 since it contains all be_read tuples
-        let be_read_stream = dbms1.exec_sql( "
+        let req = ExecSqlBatchRequest {
+            sql: "
             SELECT aid, count(uid), GROUP_CONCAT(uid), count(IF(commentOrNot=1, 1, NULL)), GROUP_CONCAT(IF(commentOrNot=1, uid, NULL)),
             count(IF(agreeOrNot=1, 1, NULL)), GROUP_CONCAT(IF(agreeOrNot = 1, uid, NULL)), count(IF(shareOrNot=1, 1, NULL)), GROUP_CONCAT(IF(shareOrNot = 1, uid, NULL))
-            FROM user_read GROUP BY aid".to_owned()
-        ).await?.into_inner();
-        // batch size is 20
-        let mut batch_stream = BatchStream::new(be_read_stream, 20);
-        while let Some(be_read_arr) = batch_stream.next().await {
-            let be_read_arr = be_read_arr.into_iter().collect::<StatusResult<_>>()?;
-            let sql = bytes_array_to_sql(be_read_arr)?;
+            FROM user_read GROUP BY aid".to_owned(),
+            batch_size: 20
+        };
+
+        let mut start = Instant::now();
+        let mut be_read_stream = dbms1.exec_sql_batch(req).await?.into_inner();
+        while let Some(be_read_arr) = be_read_stream.next().await {
+            let sql = bytes_array_to_sql(be_read_arr?)?;
             dbms2.exec_sql_drop(sql).await?;
+            trace!("one batch of generating be_read for dbms2 elapsed: {:?}", start.elapsed());
+            start = Instant::now();
         }
         trace!("generate_be_read_table: DBMS2 finish create the be_read_table");
 
@@ -116,16 +117,20 @@ impl ControlService {
             )
             .await?;
         trace!("generate_be_read_table: dbms1 create be_read table");
-        let be_read_stream = dbms2.exec_sql("
+        let req = ExecSqlBatchRequest {
+            sql: "
             SELECT aid, readNum, readUidList, commentNum, commentUidList, agreeNum, agreeUidList, shareNum, shareUidList
-            FROM be_read".to_owned()
-        ).await?.into_inner();
+            FROM be_read".to_owned(),
+            batch_size: 20
+        };
+        let mut be_read_stream = dbms2.exec_sql_batch(req).await?.into_inner();
 
-        let mut batch_stream = BatchStream::new(be_read_stream, 20);
-        while let Some(be_read_arr) = batch_stream.next().await {
-            let be_read_arr = be_read_arr.into_iter().collect::<StatusResult<_>>()?;
-            let sql = bytes_array_to_sql(be_read_arr)?;
+        start = Instant::now();
+        while let Some(be_read_arr) = be_read_stream.next().await {
+            let sql = bytes_array_to_sql(be_read_arr?)?;
             dbms1.exec_sql_drop(sql).await?;
+            trace!("one batch of generating for dbms1 be_read elapsed: {:?}", start.elapsed());
+            start = Instant::now();
         }
         trace!("generate_be_read_table: DBMS1 finish create the be_read_table");
         Ok(())
@@ -174,18 +179,23 @@ impl ControlService {
             let top_k = Self::get_popular_rank_at(&mut dbs, date, granularity).await?;
             let num = top_k.len();
             // now top_k is generated
-            let mut top_k = Vec::from_iter(top_k.into_iter().map(|e| e.aid));
-            // dedup with aid
+            let mut top_k = Vec::from_iter(
+                top_k
+                    .into_iter()
+                    .sorted_by_key(|e| std::cmp::Reverse(e.read_num))
+                    .map(|e| e.aid),
+            );
+            let list = top_k.join(",");
+            // assert no dedup id
             top_k.sort();
             top_k.dedup();
             debug_assert_eq!(num, top_k.len());
-            let list = top_k.join(",");
             let dbms = if granularity.to_string() == "daily" {
                 &mut dbs[0]
             } else {
                 &mut dbs[1]
             };
-            trace!("Generate popular table of {granularity} for {date}: {list}");
+            trace!("generate popular rank of {granularity} for {date}: {list}");
             dbms.exec_sql_drop(format!(
                 r#"
             INSERT INTO `popular_rank` (popularDate, temporalGranularity, articleAidList)
@@ -203,7 +213,7 @@ impl ControlService {
         granularity: TemporalGranularity,
     ) -> Result<()> {
         assert_eq!(dbs.len(), 2);
-        // step1: create a temp table popular_temp
+        // step1: create a temp table popular_temp and create two index
         for dbms in dbs {
             dbms.exec_sql_drop(format!(
                 "
@@ -211,9 +221,16 @@ impl ControlService {
             SELECT aid,
                 {} as popularDate,
                 count(uid) as readNum
-            FROM user_read GROUP BY popularDate, aid ORDER BY popularDate, readNum DESC",
+            FROM user_read GROUP BY popularDate, aid ORDER BY popularDate, readNum DESC;
+            CREATE INDEX popular_temp_{}_aid_index ON popular_temp_{} (aid);
+            CREATE INDEX popular_temp_{}_date_index ON popular_temp_{} (popularDate)
+            ",
                 granularity as i32,
-                granularity.to_column_sql("timestamp")
+                granularity.to_column_sql("timestamp"),
+                granularity as i32,
+                granularity as i32,
+                granularity as i32,
+                granularity as i32,
             ))
             .await?;
         }
@@ -231,7 +248,7 @@ impl ControlService {
         let mut dates = HashSet::new();
         for dbms in dbs {
             let mut date_stream = dbms
-                .exec_sql(format!(
+                .stream_exec_sql(format!(
                     "SELECT DISTINCT(popularDate) FROM popular_temp_{}",
                     granularity as i32
                 ))
@@ -268,23 +285,33 @@ impl ControlService {
         let mut top_k: BinaryHeap<PopularArticle> = BinaryHeap::with_capacity(k);
         let (dbms1, dbms2) = dbs.split_at_mut(1);
         let (mut dbms1, mut dbms2) = (&mut dbms1[0], &mut dbms2[0]);
+        // This may not correct, but for performance consideration
         let sql = format!(
             r#"SELECT * FROM popular_temp_{} WHERE popularDate = "{}""#,
             granularity as i32, date,
         );
-        let streams = join! {
-            dbms1.exec_sql(sql.clone()),
-            dbms2.exec_sql(sql),
+        let req = ExecSqlBatchRequest {
+            sql: sql.clone(),
+            batch_size: granularity.batch_size() as _,
         };
-        let bytes_to_popular_article = |bytes: Vec<u8>| -> Result<PopularArticle> {
+        let streams = join! {
+            dbms1.exec_sql_batch(req.clone()),
+            dbms2.exec_sql_batch(req),
+        };
+
+        let bytes_to_popular_article_vec = |bytes: Vec<u8>| -> Result<Vec<PopularArticle>> {
             let s = Reader::get_root(bytes.as_slice()).unwrap();
-            MyRow::deserialize(s)?.try_into()
+            Vec::<MyRow>::deserialize(s)?
+                .into_iter()
+                .map(|my_row| my_row.try_into())
+                .collect()
         };
         let (stream1, stream2) = (streams.0?.into_inner(), streams.1?.into_inner());
         let mut stream =
             common::utils::interleave(stream1.map(|s| (1, s)), stream2.map(|s| (2, s)));
         // two cursor indicating the current read num of (stream1, stream 2)
-        let mut curr_read_num = [0, 0];
+        let mut curr_read_num = [u64::MAX >> 1, u64::MAX >> 1];
+        let mut batch_idx = 0;
         while let Some((site, bytes)) = stream.next().await {
             // early stop
             if top_k.len() == k
@@ -292,44 +319,51 @@ impl ControlService {
             {
                 break;
             }
-
-            let mut popular_article = bytes_to_popular_article(bytes?)?;
+            batch_idx += 1;
+            let mut popular_articles = bytes_to_popular_article_vec(bytes?)?;
+            popular_articles.retain(|article| top_k.iter().all(|a| a.aid != article.aid));
+            let aids = join(popular_articles.iter().map(|a| &a.aid), ",");
             // update the cursor
-            curr_read_num[site - 1] = popular_article.read_num;
+            curr_read_num[site - 1] = popular_articles.last().unwrap().read_num;
             // deduplicate aid
-            if top_k.iter().any(|article| article.aid == popular_article.aid) {
-                continue;
-            }
             // try to get the entry of same aid in the other site
             let other_site = if site == 1 { &mut dbms2 } else { &mut dbms1 };
-            if let Some(other) = other_site
-                .exec_sql_first(format!(
-                    r#"SELECT * FROM popular_temp_{} WHERE popularDate = "{}" AND aid = {}"#,
-                    granularity as i32, date, popular_article.aid
+            let bytes = other_site
+                .exec_sql(format!(
+                    r#"SELECT * FROM popular_temp_{} WHERE popularDate = "{}" AND aid IN ({})"#,
+                    granularity as i32, date, aids
                 ))
                 .await?
-                .into_inner()
-                .row
-                .map(bytes_to_popular_article)
-                .transpose()?
-            {
-                debug_assert_eq!(popular_article.aid, other.aid);
-                debug_assert_eq!(popular_article.date, other.date);
-                popular_article.read_num += other.read_num;
+                .into_inner();
+
+            let other_popular_articles: HashMap<String, PopularArticle> =
+                bytes_to_popular_article_vec(bytes)?
+                    .into_iter()
+                    .map(|article| (article.aid.clone(), article))
+                    .collect();
+
+            for article in popular_articles.iter_mut() {
+                if let Some(other) = other_popular_articles.get(&article.aid) {
+                    debug_assert_eq!(article.aid, other.aid);
+                    debug_assert_eq!(article.date, other.date);
+                    article.read_num += other.read_num;
+                }
+                trace!(
+                    "article {} read num in {date} = {}",
+                    article.aid,
+                    article.read_num
+                );
             }
-            trace!(
-                "new popular_article for {date}: (aid = {}, count = {}), curr_read_num = {:?}",
-                popular_article.aid,
-                popular_article.read_num,
-                curr_read_num
-            );
-            top_k.push(popular_article);
-            if top_k.len() > k {
+            top_k.extend(popular_articles.into_iter());
+            while top_k.len() > k {
                 top_k.pop();
             }
             debug_assert!(top_k.len() <= k);
         }
-        trace!("get popular rank for {date}: {:?}", start.elapsed());
+        trace!(
+            "get popular rank for {date}: {:?}, batch_idx = {batch_idx}",
+            start.elapsed()
+        );
         Ok(top_k)
     }
 }
