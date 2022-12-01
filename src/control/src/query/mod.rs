@@ -1,22 +1,22 @@
-mod driver;
+mod optimizer;
 
 use crate::ControlService;
 use common::{Result, ServerId, StatusResult};
-use driver::Driver;
+use optimizer::Optimizer;
 use protos::ExecRequest;
+
+fn rewrite_sql(statement: String) -> Vec<(ServerId, String)> {
+    let mut optimizer = Optimizer::new_with_query(statement);
+
+    // 1. parser sql query and fill context
+    optimizer.parse();
+
+    optimizer.rewrite()
+}
 
 impl ControlService {
     // query from client
     pub async fn exec(&self, req: ExecRequest) -> Result<String> {
-        fn rewrite_sql(statement: String) -> Vec<(ServerId, String)> {
-            let mut driver = Driver::new_with_query(statement);
-
-            // 1. parser sql query and fill context
-            driver.parse();
-
-            driver.rewrite()
-        }
-
         let ExecRequest { statement } = req;
         let rewrite_sqls = rewrite_sql(statement);
 
