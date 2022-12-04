@@ -1,12 +1,26 @@
 mod optimizer;
 
+use std::collections::HashMap;
+
 use crate::ControlService;
 use common::{Result, ServerId, StatusResult};
 use optimizer::Optimizer;
-use protos::ExecRequest;
+use protos::{DbServerMeta, DbStatus, ExecRequest};
 
-fn rewrite_sql(statement: String) -> Vec<(ServerId, String)> {
-    let mut optimizer = Optimizer::new_with_query(statement);
+fn rewrite_sql(
+    statement: String,
+    shards_info: HashMap<ServerId, DbServerMeta>,
+) -> Vec<(ServerId, String)> {
+    let shards = shards_info
+        .into_iter()
+        .filter_map(|(server_id, server_meta)| {
+            if server_meta.status() == DbStatus::Alive && server_meta.shard.is_some() {
+                Some((server_id, server_meta.shard()))
+            } else {
+                None
+            }
+        });
+    let mut optimizer = Optimizer::new(statement, shards);
 
     // 1. parser sql query and fill context
     optimizer.parse();
@@ -18,7 +32,8 @@ impl ControlService {
     // query from client
     pub async fn exec(&self, req: ExecRequest) -> Result<String> {
         let ExecRequest { statement } = req;
-        let rewrite_sqls = rewrite_sql(statement);
+        let shards = self.inner.db_server_meta.read().unwrap().clone();
+        let rewrite_sqls = rewrite_sql(statement, shards);
 
         let futs = rewrite_sqls
             .into_iter()

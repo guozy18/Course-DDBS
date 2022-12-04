@@ -5,7 +5,7 @@ use common::{
 use flexbuffers::Reader;
 use futures::{join, StreamExt};
 use itertools::{join, Itertools};
-use protos::{ExecSqlBatchRequest, DbStatus, DbShard};
+use protos::{DbShard, DbStatus, ExecSqlBatchRequest};
 use serde::Deserialize;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::time::Instant;
@@ -30,6 +30,7 @@ impl ControlService {
             .ok_or(RuntimeError::Uninitialize)?;
         Ok((*shard_one.0, *shard_two.0))
     }
+
     // The first complex opeartion to support is to generate the Be-Read table
     pub async fn generate_be_read_table(&self) -> Result<()> {
         // first to check init state
@@ -84,8 +85,8 @@ impl ControlService {
             match Vec::<MyRow>::deserialize(reader) {
                 Ok(mut row) => Ok(row
                     .iter_mut()
-                    .map(|mut my_row| {
-                        BeRead::from(&mut my_row)
+                    .map(|my_row| {
+                        BeRead::from(my_row)
                             .map(|be_read| format!("CALL insert_be_read({be_read});"))
                     })
                     .collect::<Result<Vec<_>>>()?
@@ -284,9 +285,11 @@ impl ControlService {
                 let mut row = MyRow::deserialize(s)?;
                 let date: MyDate = row
                     .get_mut(0)
-                    .ok_or(RuntimeError::DBTypeParseError(
-                        "cannot get index 0 for DISTINCT popularDate".to_owned(),
-                    ))?
+                    .ok_or_else(|| {
+                        RuntimeError::DBTypeParseError(
+                            "cannot get index 0 for DISTINCT popularDate".to_owned(),
+                        )
+                    })?
                     .take()
                     .unwrap()
                     .try_into()?;

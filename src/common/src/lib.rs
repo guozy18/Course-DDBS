@@ -7,8 +7,8 @@ mod db_types;
 mod profiler;
 pub mod utils;
 
-pub use profiler::Profiler;
 pub use db_types::{BeRead, MyDate, MyRow, PopularArticle, ValueAdaptor, ValueDef};
+pub use profiler::Profiler;
 
 #[derive(Error, Debug)]
 pub enum RuntimeError {
