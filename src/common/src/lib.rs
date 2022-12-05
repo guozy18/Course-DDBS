@@ -5,10 +5,12 @@ use tonic::Status;
 
 mod db_types;
 mod profiler;
+mod shard_info;
 pub mod utils;
 
 pub use db_types::{BeRead, MyDate, MyRow, PopularArticle, ValueAdaptor, ValueDef};
 pub use profiler::Profiler;
+pub use shard_info::get_shards_info;
 
 #[derive(Error, Debug)]
 pub enum RuntimeError {

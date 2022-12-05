@@ -2,11 +2,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::vec;
 
-use common::{Profiler, ServerId};
+use common::{get_shards_info, Profiler, ServerId};
 use protos::DbShard;
 
 use sqlparser::ast::{
-    Expr, OrderByExpr, Query, Select, SetExpr, Statement, TableFactor, TableWithJoins,
+    BinaryOperator, Expr, OrderByExpr, Query, Select, SetExpr, Statement, TableFactor,
+    TableWithJoins,
 };
 use sqlparser::dialect::{Dialect, GenericDialect};
 
@@ -64,13 +65,83 @@ impl QueryContext {
                         let table_name = name.0[0].value.clone();
                         let alias_name = alias.map(|x| x.name.value);
                         Some((table_name, alias_name))
-                        // Some(table_alias)
                     }
                     _ => None,
                 }
             } else {
                 // 2. a join b
                 unimplemented!()
+            }
+        }
+
+        fn return_expr_op(expr: &Expr) -> bool {
+            match expr {
+                Expr::BinaryOp { op, .. } => {
+                    op.eq(&BinaryOperator::Eq) || op.eq(&BinaryOperator::NotEq)
+                }
+                _ => false,
+            }
+        }
+
+        // 1. 分片，另一个分片直接取消
+        fn reslove_selection(selection: Expr, _recursive: bool) -> HashMap<i32, Expr> {
+            fn get_expr_shard(my_expr: &Expr) -> Option<i32> {
+                let shards_info = get_shards_info();
+                for (shard_id, shard_expr) in shards_info {
+                    for expr in shard_expr {
+                        if my_expr.eq(&expr) {
+                            // 可以分片，则
+                            return Some(shard_id);
+                        }
+                    }
+                }
+                None
+            }
+
+            // let shards_info = get_shards_info();
+            let mut res = HashMap::new();
+            // 1. 对于每一层selection判断其是否有很多层: 只对于有region划分功能的expr才进行划分
+            if return_expr_op(&selection) {
+                // 此时是Eq或者NotEq
+                if let Some(shard_id) = get_expr_shard(&selection) {
+                    res.insert(shard_id, selection);
+                } else {
+                    for shard_id in [1, 2] {
+                        res.insert(shard_id, selection.clone());
+                    }
+                }
+                res
+            } else {
+                // 此时有两层Expr，需要进行迭代判断
+
+                match selection {
+                    Expr::BinaryOp { left, op, right } => {
+                        let left_result = reslove_selection(*left, true);
+                        let right_result = reslove_selection(*right, true);
+                        // all shard id
+                        for shard_id in vec![1, 2] {
+                            let left_expr = left_result.get(&shard_id);
+                            let right_expr = right_result.get(&shard_id);
+                            if let (Some(left_expr), Some(right_expr)) = (left_expr, right_expr) {
+                                // this shard has result
+                                let new_expr = Expr::BinaryOp {
+                                    left: Box::new(left_expr.clone()),
+                                    op: op.clone(),
+                                    right: Box::new(right_expr.clone()),
+                                };
+                                res.insert(shard_id, new_expr);
+                            }
+                        }
+                        res
+                    }
+                    _ => {
+                        for shard_id in vec![1, 2] {
+                            let new_expr = selection.clone();
+                            res.insert(shard_id, new_expr);
+                        }
+                        res
+                    }
+                }
             }
         }
 
@@ -91,6 +162,9 @@ impl QueryContext {
                 // 1. 提取出要访问的表的名字以及其别名，如果不需要rewrite则返回false
                 let x = from.into_iter().map(|x| reslove_from(x));
                 // 2. 根据上面表的别名判断selection里是否涉及到跟分片有关的属性，如果有的话直接进行分割
+                if let Some(selection) = selection {
+                    let res = reslove_selection(selection, true);
+                }
                 None
             }
             _ => None,
@@ -152,6 +226,11 @@ impl Optimizer {
 mod test {
     use sqlparser::dialect::GenericDialect;
     use sqlparser::parser::Parser;
+
+    use super::Optimizer;
+
+    #[test]
+    fn test_optimizer() {}
 
     #[test]
     fn test_sql_parser() {
