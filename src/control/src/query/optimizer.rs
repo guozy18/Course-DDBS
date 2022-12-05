@@ -7,7 +7,7 @@ use protos::DbShard;
 
 use sqlparser::ast::{
     BinaryOperator, Expr, OrderByExpr, Query, Select, SetExpr, Statement, TableFactor,
-    TableWithJoins,
+    TableWithJoins, Value,
 };
 use sqlparser::dialect::{Dialect, GenericDialect};
 
@@ -58,6 +58,130 @@ impl QueryContext {
         }
     }
 
+    // 1. 分片，另一个分片直接取消
+    fn reslove_selection(&self, selection: Expr, _recursive: bool) -> HashMap<i32, Expr> {
+        fn return_expr_op(expr: &Expr) -> bool {
+            match expr {
+                Expr::BinaryOp { op, .. } => {
+                    op.eq(&BinaryOperator::Eq) || op.eq(&BinaryOperator::NotEq)
+                }
+                _ => false,
+            }
+        }
+
+        fn get_expr_shard(my_expr: &Expr) -> Option<i32> {
+            let shards_info = get_shards_info();
+            for (shard_id, shard_expr) in shards_info {
+                for expr in shard_expr {
+                    if my_expr.eq(&expr) {
+                        // 可以分片，则
+                        return Some(shard_id);
+                    }
+                }
+            }
+            None
+        }
+
+        // let shards_info = get_shards_info();
+        let mut res = HashMap::new();
+        // 1. 对于每一层selection判断其是否有很多层: 只对于有region划分功能的expr才进行划分
+        if return_expr_op(&selection) {
+            // 此时是Eq或者NotEq
+            if let Some(shard_id) = get_expr_shard(&selection) {
+                // allocate to target shard, and this selection can be none.
+                res.insert(
+                    shard_id,
+                    Expr::Value(Value::HexStringLiteral("placeholder".to_string())),
+                );
+            } else {
+                for shard_id in [1, 2] {
+                    res.insert(shard_id, selection.clone());
+                }
+            }
+            res
+        } else {
+            // 此时有两层Expr，需要进行迭代判断
+            match selection {
+                Expr::BinaryOp { left, op, right } => {
+                    let left_result = self.reslove_selection(*left, true);
+                    let right_result = self.reslove_selection(*right, true);
+                    // 1. determine whether the expr could be shard
+                    // if left_result.len() == 1 {
+
+                    // } else if right_result.len() == 1 {
+
+                    // } else {
+
+                    // }
+                    // if let (false, false) = (left_result.len() == 1, right_result.len() == 1) {
+                    //     // the data only in two shard, all shard id
+                    //     for shard_id in [1, 2] {
+                    //         let left_expr = left_result.get(&shard_id);
+                    //         let right_expr = right_result.get(&shard_id);
+                    //         if let (Some(left_expr), Some(right_expr)) = (left_expr, right_expr) {
+                    //             // this shard has result
+                    //             let new_expr = Expr::BinaryOp {
+                    //                 left: Box::new(left_expr.clone()),
+                    //                 op: op.clone(),
+                    //                 right: Box::new(right_expr.clone()),
+                    //             };
+                    //             res.insert(shard_id, new_expr);
+                    //         }
+                    //     }
+                    // } else {
+
+                    // }
+                    // all shard id
+                    for shard_id in [1, 2] {
+                        let left_expr = left_result.get(&shard_id);
+                        let right_expr = right_result.get(&shard_id);
+                        if let (Some(left_expr), Some(right_expr)) = (left_expr, right_expr) {
+                            let placeholder =
+                                Expr::Value(Value::HexStringLiteral("placeholder".to_string()));
+                            let new_expr =
+                                match (left_expr.eq(&placeholder), right_expr.eq(&placeholder)) {
+                                    (true, true) => Expr::Value(Value::HexStringLiteral(
+                                        "placeholder".to_string(),
+                                    )),
+                                    (true, false) => right_expr.clone(),
+                                    (false, true) => left_expr.clone(),
+                                    (false, false) => Expr::BinaryOp {
+                                        left: Box::new(left_expr.clone()),
+                                        op: op.clone(),
+                                        right: Box::new(right_expr.clone()),
+                                    },
+                                };
+                            // // this shard has result
+                            // let new_expr = Expr::BinaryOp {
+                            //     left: Box::new(left_expr.clone()),
+                            //     op: op.clone(),
+                            //     right: Box::new(right_expr.clone()),
+                            // };
+                            res.insert(shard_id, new_expr);
+                        }
+                    }
+                    res
+                }
+                _ => {
+                    for shard_id in [1, 2] {
+                        let new_expr = selection.clone();
+                        res.insert(shard_id, new_expr);
+                    }
+                    res
+                }
+            }
+        }
+    }
+
+    fn rewrite_placeholder(&self, expr: Expr) -> Expr {
+        let placeholder = Expr::Value(Value::HexStringLiteral("placeholder".to_string()));
+        if expr.eq(&placeholder) {
+            Expr::Value(Value::Boolean(true))
+        } else {
+            expr
+        }
+    }
+
     // this function is used to rewrite sql like "SELECT name, gender FROM User WHERE name = \"user10\""
     fn is_single_select(&self, query_body: SetExpr) -> HashMap<ServerId, Option<SetExpr>> {
         fn reslove_from(from: TableWithJoins) -> Option<(String, Option<String>)> {
@@ -80,79 +204,7 @@ impl QueryContext {
             }
         }
 
-        fn return_expr_op(expr: &Expr) -> bool {
-            match expr {
-                Expr::BinaryOp { op, .. } => {
-                    op.eq(&BinaryOperator::Eq) || op.eq(&BinaryOperator::NotEq)
-                }
-                _ => false,
-            }
-        }
-
-        // 1. 分片，另一个分片直接取消
-        fn reslove_selection(selection: Expr, _recursive: bool) -> HashMap<i32, Expr> {
-            fn get_expr_shard(my_expr: &Expr) -> Option<i32> {
-                let shards_info = get_shards_info();
-                for (shard_id, shard_expr) in shards_info {
-                    for expr in shard_expr {
-                        if my_expr.eq(&expr) {
-                            // 可以分片，则
-                            return Some(shard_id);
-                        }
-                    }
-                }
-                None
-            }
-
-            // let shards_info = get_shards_info();
-            let mut res = HashMap::new();
-            // 1. 对于每一层selection判断其是否有很多层: 只对于有region划分功能的expr才进行划分
-            if return_expr_op(&selection) {
-                // 此时是Eq或者NotEq
-                if let Some(shard_id) = get_expr_shard(&selection) {
-                    res.insert(shard_id, selection);
-                } else {
-                    for shard_id in [1, 2] {
-                        res.insert(shard_id, selection.clone());
-                    }
-                }
-                res
-            } else {
-                // 此时有两层Expr，需要进行迭代判断
-
-                match selection {
-                    Expr::BinaryOp { left, op, right } => {
-                        let left_result = reslove_selection(*left, true);
-                        let right_result = reslove_selection(*right, true);
-                        // all shard id
-                        for shard_id in vec![1, 2] {
-                            let left_expr = left_result.get(&shard_id);
-                            let right_expr = right_result.get(&shard_id);
-                            if let (Some(left_expr), Some(right_expr)) = (left_expr, right_expr) {
-                                // this shard has result
-                                let new_expr = Expr::BinaryOp {
-                                    left: Box::new(left_expr.clone()),
-                                    op: op.clone(),
-                                    right: Box::new(right_expr.clone()),
-                                };
-                                res.insert(shard_id, new_expr);
-                            }
-                        }
-                        res
-                    }
-                    _ => {
-                        for shard_id in vec![1, 2] {
-                            let new_expr = selection.clone();
-                            res.insert(shard_id, new_expr);
-                        }
-                        res
-                    }
-                }
-            }
-        }
-
         let mut final_query = HashMap::new();
-
         // 1. 全表扫描
         // 2. 条件查询
         match query_body.clone() {
@@ -162,7 +214,7 @@ impl QueryContext {
                 // selection 代表的是表的筛选条件的信息
                 let Select {
                     from,
-                    projection,
+                    // projection,
                     selection,
                     ..
                 } = *select.clone();
@@ -171,14 +223,16 @@ impl QueryContext {
                 let _x = from.into_iter().map(reslove_from);
                 // 2. 根据上面表的别名判断selection里是否涉及到跟分片有关的属性，如果有的话直接进行分割
                 if let Some(selection) = selection {
-                    let res = reslove_selection(selection, true);
+                    let res = self.reslove_selection(selection, true);
                     for server_id in self.server_list.clone() {
                         let selection = res.get(&(server_id as i32));
                         // need shard, for no shard, no need query
                         if let Some(selection) = selection {
+                            // rewrite placeholder
+                            let rewrite_selection = self.rewrite_placeholder(selection.clone());
                             // replace selection expr
                             let mut new_select = *select.clone();
-                            new_select.selection = Some(selection.clone());
+                            new_select.selection = Some(rewrite_selection);
                             let new_query_body = SetExpr::Select(Box::new(new_select));
                             final_query.insert(server_id, Some(new_query_body));
                         } else {
@@ -274,7 +328,9 @@ mod test_optimize {
 
     fn construct_optimzier_mock() -> Optimizer {
         let query =
-            "SELECT name, gender FROM User WHERE id < 100 AND region = \"Beijing\"".to_string();
+            // "SELECT name, gender FROM User WHERE id < 100 AND region = \"Beijing\"".to_string();
+            // "SELECT name, gender FROM User WHERE region = \"Beijing\" AND region = \"Beijing\"".to_string();
+            "SELECT name, gender FROM User WHERE region = \"HongKong\" AND region = \"Beijing\"".to_string();
         let shards = vec![(1, DbShard::One), (2, DbShard::Two)];
         Optimizer::new(query, shards.into_iter())
     }
@@ -289,18 +345,18 @@ mod test_optimize {
         query_context.set_server_list([1, 2].into_iter());
 
         let query = query_context.is_query().unwrap();
-        println!("First, get query context: \n{query:#?}");
+        println!("First, get query context: \n{query:#?}\n");
 
         let order_by = query_context.extract_order_by(&query);
-        println!("Second, get order by context: \n{order_by:#?}");
+        println!("Second, get order by context: \n{order_by:#?}\n");
 
         let limit = query_context.extract_limit(&query);
-        println!("Third, get limit context: \n{limit:#?}");
+        println!("Third, get limit context: \n{limit:#?}\n");
 
         let shard_select = query_context.is_single_select(*query.body);
         for (server_id, server_select) in shard_select {
             println!(
-                "Final, get rewrite select context \nserver_id: {:#?} server_select:\n{:#?}",
+                "Final, get rewrite select context \nserver_id: {:#?} server_select:\n{:#?}\n",
                 server_id, server_select
             );
         }
@@ -309,10 +365,11 @@ mod test_optimize {
     #[test]
     fn test_optimizer() {
         let mut optimizer = construct_optimzier_mock();
+        optimizer.parse();
         let result = optimizer.rewrite();
         for (shard_id, shard_sql) in result {
             println!(
-                "Final, get rewrite select context \nserver_id: {:#?} server_select:\n{:#?}",
+                "Final, get rewrite select context \nserver_id: {:#?} server_select:\n{:#?}\n",
                 shard_id, shard_sql
             );
         }
