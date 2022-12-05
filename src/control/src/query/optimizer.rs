@@ -268,10 +268,55 @@ impl Optimizer {
 
 #[cfg(test)]
 mod test_optimize {
+    use super::DbShard;
     use super::{Optimizer, QueryContext};
+    use sqlparser::parser::Parser;
+
+    fn construct_optimzier_mock() -> Optimizer {
+        let query =
+            "SELECT name, gender FROM User WHERE id < 100 AND region = \"Beijing\"".to_string();
+        let shards = vec![(1, DbShard::One), (2, DbShard::Two)];
+        Optimizer::new(query, shards.into_iter())
+    }
 
     #[test]
-    fn test_query_context() {}
+    fn test_query_context() {
+        let query = "SELECT name, gender FROM User WHERE id < 100 AND region = \"Beijing\"";
+        let mut query_context = QueryContext::new();
+        let dialect = query_context.get_dialect_ref();
+        let ast = Parser::parse_sql(dialect, query).unwrap();
+        query_context.set_ast(ast.into_iter());
+        query_context.set_server_list([1, 2].into_iter());
+
+        let query = query_context.is_query().unwrap();
+        println!("First, get query context: \n{query:#?}");
+
+        let order_by = query_context.extract_order_by(&query);
+        println!("Second, get order by context: \n{order_by:#?}");
+
+        let limit = query_context.extract_limit(&query);
+        println!("Third, get limit context: \n{limit:#?}");
+
+        let shard_select = query_context.is_single_select(*query.body);
+        for (server_id, server_select) in shard_select {
+            println!(
+                "Final, get rewrite select context \nserver_id: {:#?} server_select:\n{:#?}",
+                server_id, server_select
+            );
+        }
+    }
+
+    #[test]
+    fn test_optimizer() {
+        let mut optimizer = construct_optimzier_mock();
+        let result = optimizer.rewrite();
+        for (shard_id, shard_sql) in result {
+            println!(
+                "Final, get rewrite select context \nserver_id: {:#?} server_select:\n{:#?}",
+                shard_id, shard_sql
+            );
+        }
+    }
 }
 
 #[cfg(test)]
