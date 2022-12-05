@@ -3,10 +3,11 @@
 use sqlparser::ast::{BinaryOperator::Eq, Expr, Ident};
 use std::{collections::HashMap, vec};
 
+#[derive(Debug, Clone)]
 pub enum DataShard {
-    Partition,
+    Shard,
     Two,
-    All,
+    NotShard,
 }
 
 // Dbshare1: 0, Dbshard2: 0;
@@ -73,15 +74,21 @@ pub fn join_shard_info() -> HashMap<(String, String), DataShard> {
     // user join user_read
     data_shard.insert(
         ("user".to_string(), "user_read".to_string()),
-        DataShard::Partition,
+        DataShard::NotShard,
     );
     data_shard.insert(
         ("user_read".to_string(), "user".to_string()),
-        DataShard::Partition,
+        DataShard::NotShard,
     );
     // user join article: need query on both shard and compute in control layer
-    data_shard.insert(("user".to_string(), "article".to_string()), DataShard::All);
-    data_shard.insert(("article".to_string(), "user".to_string()), DataShard::All);
+    data_shard.insert(
+        ("user".to_string(), "article".to_string()),
+        DataShard::Shard,
+    );
+    data_shard.insert(
+        ("article".to_string(), "user".to_string()),
+        DataShard::Shard,
+    );
     // be_read join article: need only in shard2
     data_shard.insert(
         ("article".to_string(), "be_read".to_string()),
