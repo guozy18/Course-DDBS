@@ -2,12 +2,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::vec;
 
-use common::{get_shards_info, Profiler, ServerId};
+use common::{get_shards_info, join_shard_info, Profiler, ServerId, SymbolTable};
 use protos::DbShard;
 
 use sqlparser::ast::{
-    BinaryOperator, Expr, OrderByExpr, Query, Select, SetExpr, Statement, TableFactor,
-    TableWithJoins, Value,
+    BinaryOperator, Expr, Join, JoinOperator, OrderByExpr, Query, Select, SetExpr, Statement,
+    TableFactor, TableWithJoins, Value,
 };
 use sqlparser::dialect::{Dialect, GenericDialect};
 
@@ -82,7 +82,6 @@ impl QueryContext {
             None
         }
 
-        // let shards_info = get_shards_info();
         let mut res = HashMap::new();
         // 1. 对于每一层selection判断其是否有很多层: 只对于有region划分功能的expr才进行划分
         if return_expr_op(&selection) {
@@ -105,32 +104,6 @@ impl QueryContext {
                 Expr::BinaryOp { left, op, right } => {
                     let left_result = self.reslove_selection(*left, true);
                     let right_result = self.reslove_selection(*right, true);
-                    // 1. determine whether the expr could be shard
-                    // if left_result.len() == 1 {
-
-                    // } else if right_result.len() == 1 {
-
-                    // } else {
-
-                    // }
-                    // if let (false, false) = (left_result.len() == 1, right_result.len() == 1) {
-                    //     // the data only in two shard, all shard id
-                    //     for shard_id in [1, 2] {
-                    //         let left_expr = left_result.get(&shard_id);
-                    //         let right_expr = right_result.get(&shard_id);
-                    //         if let (Some(left_expr), Some(right_expr)) = (left_expr, right_expr) {
-                    //             // this shard has result
-                    //             let new_expr = Expr::BinaryOp {
-                    //                 left: Box::new(left_expr.clone()),
-                    //                 op: op.clone(),
-                    //                 right: Box::new(right_expr.clone()),
-                    //             };
-                    //             res.insert(shard_id, new_expr);
-                    //         }
-                    //     }
-                    // } else {
-
-                    // }
                     // all shard id
                     for shard_id in [1, 2] {
                         let left_expr = left_result.get(&shard_id);
@@ -151,12 +124,6 @@ impl QueryContext {
                                         right: Box::new(right_expr.clone()),
                                     },
                                 };
-                            // // this shard has result
-                            // let new_expr = Expr::BinaryOp {
-                            //     left: Box::new(left_expr.clone()),
-                            //     op: op.clone(),
-                            //     right: Box::new(right_expr.clone()),
-                            // };
                             res.insert(shard_id, new_expr);
                         }
                     }
@@ -173,37 +140,17 @@ impl QueryContext {
         }
     }
 
-    fn rewrite_placeholder(&self, expr: Expr) -> Expr {
+    fn rewrite_placeholder(&self, expr: Expr) -> Option<Expr> {
         let placeholder = Expr::Value(Value::HexStringLiteral("placeholder".to_string()));
         if expr.eq(&placeholder) {
-            Expr::Value(Value::Boolean(true))
+            None
         } else {
-            expr
+            Some(expr)
         }
     }
 
     // this function is used to rewrite sql like "SELECT name, gender FROM User WHERE name = \"user10\""
     fn is_single_select(&self, query_body: SetExpr) -> HashMap<ServerId, Option<SetExpr>> {
-        fn reslove_from(from: TableWithJoins) -> Option<(String, Option<String>)> {
-            // let mut table_alias = HashMap::new();
-
-            let TableWithJoins { relation, joins } = from;
-            // 1. not join
-            if joins.is_empty() {
-                match relation {
-                    TableFactor::Table { name, alias, .. } => {
-                        let table_name = name.0[0].value.clone();
-                        let alias_name = alias.map(|x| x.name.value);
-                        Some((table_name, alias_name))
-                    }
-                    _ => None,
-                }
-            } else {
-                // 2. a join b
-                unimplemented!()
-            }
-        }
-
         let mut final_query = HashMap::new();
         // 1. 全表扫描
         // 2. 条件查询
@@ -232,7 +179,7 @@ impl QueryContext {
                             let rewrite_selection = self.rewrite_placeholder(selection.clone());
                             // replace selection expr
                             let mut new_select = *select.clone();
-                            new_select.selection = Some(rewrite_selection);
+                            new_select.selection = rewrite_selection;
                             let new_query_body = SetExpr::Select(Box::new(new_select));
                             final_query.insert(server_id, Some(new_query_body));
                         } else {
@@ -256,12 +203,78 @@ impl QueryContext {
         }
     }
 
+    fn extract_join(&self, query_body: SetExpr) -> Option<JoinOperator> {
+        match query_body {
+            SetExpr::Select(select) => {
+                // 从from中能够推断出当前查询要访问的目标表，以及其是否是join连接
+                // projection 提取要返回的信息表
+                // selection 代表的是表的筛选条件的信息
+                let Select { from, .. } = *select;
+
+                // 1. 提取出要访问的表的名字以及其别名，如果不需要rewrite则返回false
+                let _x = from.into_iter().map(reslove_from);
+                None
+            }
+            _ => None,
+        }
+    }
+
     fn extract_order_by(&self, query: &Query) -> Vec<OrderByExpr> {
         query.order_by.clone()
     }
 
     fn extract_limit(&self, query: &Query) -> Option<Expr> {
         query.limit.clone()
+    }
+}
+
+fn reslove_table_factor(relation: TableFactor) -> Option<(String, Option<String>)> {
+    match relation {
+        TableFactor::Table { name, alias, .. } => {
+            let table_name = name.0[0].value.clone();
+            let alias_name = alias.map(|x| x.name.value);
+            Some((table_name, alias_name))
+        }
+        _ => None,
+    }
+}
+
+fn reslove_from(from: TableWithJoins) -> (SymbolTable, Option<JoinOperator>) {
+    // let mut table_alias = HashMap::new();
+    let mut symbol_table = SymbolTable::default();
+
+    let TableWithJoins { relation, joins } = from;
+
+    // join from factor
+    if let Some((table_name, Some(alias_name))) = reslove_table_factor(relation) {
+        symbol_table.insert(table_name, alias_name);
+    }
+
+    // 1. not join
+    if joins.is_empty() {
+        (symbol_table, None)
+    } else {
+        let join_shard_info = join_shard_info();
+        // 2. a join b: currently we only support a join b
+        let Join {
+            relation,
+            join_operator,
+        } = joins.get(0).unwrap().clone();
+
+        if let Some((table_name, Some(alias_name))) = reslove_table_factor(relation) {
+            symbol_table.insert(table_name, alias_name);
+        }
+        assert_eq!(symbol_table.len(), 2);
+        let join_key = (
+            symbol_table.get_index(0).unwrap(),
+            symbol_table.get_index(1).unwrap(),
+        );
+        if let Some(shard_info) = join_shard_info.get(&join_key) {
+            // currently we could get the divide join and the we can splitting the condition
+        }
+
+        // None
+        (symbol_table, Some(join_operator))
     }
 }
 
@@ -330,7 +343,8 @@ mod test_optimize {
         let query =
             // "SELECT name, gender FROM User WHERE id < 100 AND region = \"Beijing\"".to_string();
             // "SELECT name, gender FROM User WHERE region = \"Beijing\" AND region = \"Beijing\"".to_string();
-            "SELECT name, gender FROM User WHERE region = \"HongKong\" AND region = \"Beijing\"".to_string();
+            "SELECT name, gender FROM User WHERE region = \"HongKong\" AND region = \"HongKong\"".to_string();
+        // "SELECT name, gender FROM User WHERE region = \"HongKong\" AND region = \"Beijing\"".to_string();
         let shards = vec![(1, DbShard::One), (2, DbShard::Two)];
         Optimizer::new(query, shards.into_iter())
     }

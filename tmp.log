@@ -239,6 +239,16 @@ SELECT * FROM User
     ),
 ]
 
+user and article join:
+select * from user where xxx; (to shard1 and shard2); (union result)
+select * from article where xxx; (to shard2); (get result)
+
+control layer compute the join value, and do join
+
+article and be-read join:
+select * from article where xxx; (to shard2)
+select * from be-read where xxx; (to_shard2)
+
 "SELECT a.title, b.readNum 
 FROM Article AS a INNER JOIN BeRead AS b ON a.id = b.aid 
 ORDER BY b.readNum DESC 
