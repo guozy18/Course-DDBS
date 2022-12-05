@@ -17,6 +17,7 @@ use sqlparser::parser::Parser;
 pub struct QueryContext {
     dialect: Box<dyn Dialect>,
     ast: Vec<Statement>,
+    server_list: Vec<ServerId>,
 }
 
 impl Default for QueryContext {
@@ -24,6 +25,7 @@ impl Default for QueryContext {
         Self {
             dialect: Box::new(GenericDialect::default()),
             ast: vec![],
+            server_list: vec![],
         }
     }
 }
@@ -41,6 +43,10 @@ impl QueryContext {
         self.ast = ast.collect();
     }
 
+    fn set_server_list(&mut self, server_id: impl Iterator<Item = ServerId>) {
+        self.server_list = server_id.collect();
+    }
+
     fn is_query(&self) -> Option<Query> {
         if self.ast.len() != 1 {
             return None;
@@ -53,7 +59,7 @@ impl QueryContext {
     }
 
     // this function is used to rewrite sql like "SELECT name, gender FROM User WHERE name = \"user10\""
-    fn is_single_select(&self, query_body: SetExpr) -> Option<String> {
+    fn is_single_select(&self, query_body: SetExpr) -> HashMap<ServerId, Option<SetExpr>> {
         fn reslove_from(from: TableWithJoins) -> Option<(String, Option<String>)> {
             // let mut table_alias = HashMap::new();
 
@@ -145,9 +151,11 @@ impl QueryContext {
             }
         }
 
+        let mut final_query = HashMap::new();
+
         // 1. 全表扫描
         // 2. 条件查询
-        match query_body {
+        match query_body.clone() {
             SetExpr::Select(select) => {
                 // 从from中能够推断出当前查询要访问的目标表，以及其是否是join连接
                 // projection 提取要返回的信息表
@@ -157,17 +165,40 @@ impl QueryContext {
                     projection,
                     selection,
                     ..
-                } = *select;
+                } = *select.clone();
 
                 // 1. 提取出要访问的表的名字以及其别名，如果不需要rewrite则返回false
-                let x = from.into_iter().map(|x| reslove_from(x));
+                let _x = from.into_iter().map(reslove_from);
                 // 2. 根据上面表的别名判断selection里是否涉及到跟分片有关的属性，如果有的话直接进行分割
                 if let Some(selection) = selection {
                     let res = reslove_selection(selection, true);
-                }
-                None
+                    for server_id in self.server_list.clone() {
+                        let selection = res.get(&(server_id as i32));
+                        // need shard, for no shard, no need query
+                        if let Some(selection) = selection {
+                            // replace selection expr
+                            let mut new_select = *select.clone();
+                            new_select.selection = Some(selection.clone());
+                            let new_query_body = SetExpr::Select(Box::new(new_select));
+                            final_query.insert(server_id, Some(new_query_body));
+                        } else {
+                            final_query.insert(server_id, None);
+                        }
+                    }
+                } else {
+                    // no shard partitioning
+                    for server_id in self.server_list.clone() {
+                        final_query.insert(server_id, Some(query_body.clone()));
+                    }
+                };
+                final_query
             }
-            _ => None,
+            _ => {
+                for server_id in self.server_list.clone() {
+                    final_query.insert(server_id, Some(query_body.clone()));
+                }
+                final_query
+            }
         }
     }
 
@@ -204,33 +235,49 @@ impl Optimizer {
         let ast = Parser::parse_sql(dialect, &self.query).unwrap();
         self.profiler.parse_finished();
         query_context.set_ast(ast.into_iter());
+        query_context.set_server_list(self.shards.iter().map(|(x, _)| *x));
         self.ctx = Arc::new(query_context);
     }
 
     // only rewrite sql::ast::query
-    pub fn rewrite(&mut self) -> Vec<(ServerId, String)> {
-        let rewrite_sql = if let Some(query) = self.ctx.is_query() {
+    pub fn rewrite(&mut self) -> HashMap<ServerId, Option<String>> {
+        let mut rewrite_sql = HashMap::new();
+        if let Some(query) = self.ctx.is_query() {
             let _order_by = self.ctx.extract_order_by(&query);
             let _limit = self.ctx.extract_limit(&query);
-            let _select = self.ctx.is_single_select(*query.body);
-            String::new()
+            let shard_select = self.ctx.is_single_select(*query.clone().body);
+            for (server_id, server_select) in shard_select {
+                if let Some(server_select) = server_select {
+                    let mut new_query = query.clone();
+                    new_query.body = Box::new(server_select);
+                    let new_sql_string = new_query.to_string();
+                    rewrite_sql.insert(server_id, Some(new_sql_string));
+                } else {
+                    rewrite_sql.insert(server_id, None);
+                }
+            }
         } else {
-            self.query.clone()
-        };
+            for (server_id, _) in self.shards.iter() {
+                rewrite_sql.insert(*server_id, Some(self.query.clone()));
+            }
+        }
         self.profiler.rewrite_finished();
-        vec![(0, rewrite_sql)]
+        rewrite_sql
     }
+}
+
+#[cfg(test)]
+mod test_optimize {
+    use super::{Optimizer, QueryContext};
+
+    #[test]
+    fn test_query_context() {}
 }
 
 #[cfg(test)]
 mod test {
     use sqlparser::dialect::GenericDialect;
     use sqlparser::parser::Parser;
-
-    use super::Optimizer;
-
-    #[test]
-    fn test_optimizer() {}
 
     #[test]
     fn test_sql_parser() {

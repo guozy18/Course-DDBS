@@ -24,7 +24,12 @@ fn rewrite_sql(
     // 1. parser sql query and fill context
     optimizer.parse();
 
-    optimizer.rewrite()
+    let rewrite_sql = optimizer.rewrite();
+
+    rewrite_sql
+        .into_iter()
+        .filter_map(|(server_id, server_sql)| server_sql.map(|server_sql| (server_id, server_sql)))
+        .collect::<Vec<_>>()
 }
 
 impl ControlService {
@@ -42,17 +47,14 @@ impl ControlService {
                     db_clients.get(&server_id).unwrap().clone()
                 };
                 async move {
-                    let resp = dbms_client.exec_sql_drop(sql).await?;
+                    let resp = dbms_client.exec_sql(sql).await?;
                     StatusResult::<_>::Ok(resp.into_inner())
                 }
             })
             .collect::<Vec<_>>();
-        // drop(db_clients);
 
         let results = futures::future::join_all(futs).await;
-        // for fut in futs {
-        //     let x = fut.await;
-        // }
+
         for result in results {
             result?;
             // compute final answer

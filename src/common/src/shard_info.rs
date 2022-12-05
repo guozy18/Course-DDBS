@@ -1,4 +1,4 @@
-// Database shard info
+// Database shards info
 
 use sqlparser::ast::{BinaryOperator::Eq, Expr, Ident};
 use std::{collections::HashMap, vec};
