@@ -2,12 +2,15 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::vec;
 
-use common::{get_shards_info, join_shard_info, DataShard, Profiler, ServerId, SymbolTable};
+use common::{
+    get_join_condition, get_shards_info, join_shard_info, DataShard, Profiler, ServerId,
+    SymbolTable,
+};
 use protos::DbShard;
 
 use sqlparser::ast::{
-    BinaryOperator, Expr, Ident, Join, JoinOperator, ObjectName, OrderByExpr, Query, Select,
-    SetExpr, Statement, TableAlias, TableFactor, TableWithJoins, Value,
+    BinaryOperator, Expr, Ident, Join, JoinConstraint, JoinOperator, ObjectName, OrderByExpr,
+    Query, Select, SetExpr, Statement, TableAlias, TableFactor, TableWithJoins, Value,
 };
 use sqlparser::dialect::{Dialect, GenericDialect};
 
@@ -229,13 +232,85 @@ impl QueryContext {
                 joins: vec![],
             }]
         }
+
         fn extract_selection(
-            name1: String,
-            name2: String,
+            left_name: String,
+            left_alias_name: Option<String>,
+            right_name: String,
+            right_alias_name: Option<String>,
             selection: Option<Expr>,
         ) -> (Option<Expr>, Option<Expr>) {
-            unimplemented!()
+            let join_condition = get_join_condition();
+            let left_join = join_condition.get(&left_name).unwrap();
+            let right_join = join_condition.get(&right_name).unwrap();
+
+            let left_join = left_alias_name.map_or_else(
+                || Expr::Identifier(left_join.clone()),
+                |alias_name| {
+                    Expr::CompoundIdentifier(vec![
+                        Ident {
+                            value: alias_name,
+                            quote_style: None,
+                        },
+                        left_join.clone(),
+                    ])
+                },
+            );
+            let right_join = right_alias_name.map_or_else(
+                || Expr::Identifier(right_join.clone()),
+                |alias_name| {
+                    Expr::CompoundIdentifier(vec![
+                        Ident {
+                            value: alias_name,
+                            quote_style: None,
+                        },
+                        right_join.clone(),
+                    ])
+                },
+            );
+
+            if let Some(selection) = selection {
+                match selection.clone() {
+                    Expr::BinaryOp { left, op, right } => {
+                        let left_expr = *left;
+                        let right_expr = *right;
+
+                        if left_expr.eq(&left_join) || left_expr.eq(&right_join) {
+                            // the slection is relationed to join, we need to rewrite
+                            let left_selection = Expr::BinaryOp {
+                                left: Box::new(left_join),
+                                op: op.clone(),
+                                right: Box::new(right_expr.clone()),
+                            };
+                            let right_selection = Expr::BinaryOp {
+                                left: Box::new(right_join),
+                                op,
+                                right: Box::new(right_expr),
+                            };
+                            (Some(left_selection), Some(right_selection))
+                        } else if right_expr.eq(&left_join) || right_expr.eq(&right_join) {
+                            let left_selection = Expr::BinaryOp {
+                                left: Box::new(left_join),
+                                op: op.clone(),
+                                right: Box::new(left_expr.clone()),
+                            };
+                            let right_selection = Expr::BinaryOp {
+                                left: Box::new(right_join),
+                                op,
+                                right: Box::new(left_expr),
+                            };
+                            (Some(left_selection), Some(right_selection))
+                        } else {
+                            (Some(selection.clone()), Some(selection))
+                        }
+                    }
+                    _ => (Some(selection.clone()), Some(selection)),
+                }
+            } else {
+                (None, None)
+            }
         }
+
         let mut final_query = HashMap::new();
 
         // 1. need rewrite
@@ -251,6 +326,7 @@ impl QueryContext {
                 // 1. 提取出要访问的表的名字以及其别名，如果不需要rewrite则返回false
                 for iter in from {
                     let (symbol_table, join_info) = reslove_from(iter);
+                    println!("debug: {join_info:#?}");
                     match join_info {
                         // no need to shard, continue to execute
                         Some((DataShard::NotShard, _)) => {
@@ -264,14 +340,21 @@ impl QueryContext {
                             let mut final_query2 = HashMap::new();
                             let table_name1 = symbol_table.get_index(0).unwrap();
                             let alias_name1 = symbol_table.get(&table_name1);
-                            let from1 = get_table_factor(table_name1.clone(), alias_name1);
+                            let from1 = get_table_factor(table_name1.clone(), alias_name1.clone());
 
                             let table_name2 = symbol_table.get_index(1).unwrap();
                             let alias_name2 = symbol_table.get(&table_name2);
-                            let from2 = get_table_factor(table_name2.clone(), alias_name2);
-
-                            let (selection1, selection2) =
-                                extract_selection(table_name1, table_name2, selection);
+                            let from2 = get_table_factor(table_name2.clone(), alias_name2.clone());
+                            println!("debug from: {from1:#?}, {from2:#?}");
+                            println!("debug table name: {table_name1:#?}, {table_name2:#?}, {selection:#?}");
+                            let (selection1, selection2) = extract_selection(
+                                table_name1,
+                                alias_name1,
+                                table_name2,
+                                alias_name2,
+                                selection,
+                            );
+                            println!("debug selection: {selection1:#?}, {selection2:#?}");
                             let mut new_select1 = *select.clone();
                             new_select1.selection = selection1;
                             new_select1.from = from1;
@@ -281,12 +364,16 @@ impl QueryContext {
                             new_select2.selection = selection2;
                             new_select2.from = from2;
                             let new_query_body2 = SetExpr::Select(Box::new(new_select2));
+                            println!(
+                                "debug query body: {new_query_body1:#?}, {new_query_body2:#?}"
+                            );
 
                             for server_id in self.server_list.clone() {
+                                println!("debug server id: {server_id:#?}");
                                 final_query1.insert(server_id, Some(new_query_body1.clone()));
                                 final_query2.insert(server_id, Some(new_query_body2.clone()));
                             }
-                            return (vec![final_query], Some(join_info));
+                            return (vec![final_query1, final_query2], Some(join_info));
                         }
                         // only to need query in shard2, no need rewrite
                         Some((DataShard::Two, _)) => {
@@ -476,9 +563,18 @@ mod test_optimize {
 
     #[test]
     fn test_rewrite_join() {
-        let query = "SELECT a.title, b.readNum FROM Article AS a INNER JOIN BeRead AS b 
-            ON a.id = b.aid 
-            ORDER BY b.readNum DESC 
+        // let query = "SELECT a.title, b.readNum FROM article AS a INNER JOIN be_read AS b
+        //     ON a.id = b.aid
+        //     ORDER BY b.readNum DESC
+        //     LIMIT 5";
+        // let query = "SELECT a.title, b.readNum FROM user AS a INNER JOIN user_read AS b
+        //     ON a.uid = b.uid
+        //     ORDER BY b.timestamp DESC
+        //     LIMIT 5";
+        let query = "SELECT a.title, b.readNum FROM user AS a INNER JOIN article AS b 
+            ON a.uid = b.aid 
+            where a.uid = 100
+            ORDER BY b.timestamp DESC 
             LIMIT 5";
         let mut query_context = QueryContext::new();
         let dialect = query_context.get_dialect_ref();
@@ -504,7 +600,7 @@ mod test_optimize {
                 );
             }
         }
-        println!("Finally, get limit context: \n{join_operator:#?}\n");
+        println!("get join operator: \n{join_operator:#?}\n");
     }
 
     #[test]
@@ -547,7 +643,7 @@ mod test {
 
         let res = Parser::parse_sql(
             &dialect,
-            "SELECT a.title, b.readNum FROM Article AS a INNER JOIN BeRead AS b
+            "SELECT a.title, b.readNum FROM article AS a INNER JOIN be_read AS b
             ON a.id = b.aid ORDER BY b.readNum DESC LIMIT 5",
         )
         .unwrap();

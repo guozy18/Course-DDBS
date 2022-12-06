@@ -11,7 +11,7 @@ pub mod utils;
 
 pub use db_types::{BeRead, MyDate, MyRow, PopularArticle, ValueAdaptor, ValueDef};
 pub use profiler::Profiler;
-pub use shard_info::{get_shards_info, join_shard_info, DataShard};
+pub use shard_info::{get_join_condition, get_shards_info, join_shard_info, DataShard};
 pub use symbol_table::SymbolTable;
 
 #[derive(Error, Debug)]

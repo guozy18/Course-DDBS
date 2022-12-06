@@ -68,6 +68,27 @@ pub fn get_shards_info() -> HashMap<i32, Vec<Expr>> {
     shards_info
 }
 
+pub fn get_join_condition() -> HashMap<String, Ident> {
+    let mut join_condition = HashMap::new();
+
+    let uid_expr = Ident {
+        value: "uid".to_string(),
+        quote_style: None,
+    };
+
+    let aid_expr = Ident {
+        value: "aid".to_string(),
+        quote_style: None,
+    };
+
+    join_condition.insert("user".to_string(), uid_expr.clone());
+    join_condition.insert("read".to_string(), uid_expr);
+    join_condition.insert("article".to_string(), aid_expr.clone());
+    join_condition.insert("be_read".to_string(), aid_expr);
+
+    join_condition
+}
+
 pub fn join_shard_info() -> HashMap<(String, String), DataShard> {
     let mut data_shard = HashMap::new();
 
