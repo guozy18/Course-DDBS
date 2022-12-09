@@ -51,7 +51,7 @@ impl From<Row> for MyRow {
         let values = row
             .unwrap_raw()
             .into_iter()
-            .map(|ele| ele.map(|v| ValueAdaptor::new(v)))
+            .map(|ele| ele.map(ValueAdaptor::new))
             .collect::<Vec<_>>();
         Self(values)
     }
@@ -94,13 +94,9 @@ impl MyRow {
     {
         let v = self
             .get_mut(idx)
-            .ok_or(RuntimeError::DBTypeParseError(format!(
-                "idx {idx} out of range"
-            )))?
+            .ok_or_else(|| RuntimeError::DBTypeParseError(format!("idx {idx} out of range")))?
             .take()
-            .ok_or(RuntimeError::DBTypeParseError(format!(
-                "idx {idx} has been taken"
-            )))?
+            .ok_or_else(|| RuntimeError::DBTypeParseError(format!("idx {idx} has been taken")))?
             .0;
         // if converting to type T failed, need to restore the Value in the Row
         match from_value_opt(v) {
@@ -117,13 +113,11 @@ impl MyRow {
     pub fn get_row_bytes(&self, idx: usize) -> Result<&[u8]> {
         let value = self
             .get(idx)
-            .ok_or(RuntimeError::DBTypeParseError(format!(
-                "cannot get idx {idx} of row: {self:?}"
-            )))?
+            .ok_or_else(|| {
+                RuntimeError::DBTypeParseError(format!("cannot get idx {idx} of row: {self:?}"))
+            })?
             .as_ref()
-            .ok_or(RuntimeError::DBTypeParseError(format!(
-                "idx {idx} has been taken"
-            )))?;
+            .ok_or_else(|| RuntimeError::DBTypeParseError(format!("idx {idx} has been taken")))?;
         match &value.0 {
             Value::Bytes(v) => Ok(v),
             Value::NULL => Ok(&[]),
@@ -146,13 +140,13 @@ impl<'a> BeRead<'a> {
         unsafe {
             Ok(Self {
                 aid: row.get_row_str(0)?,
-                read_num: (&mut *row_ptr).get_row_value(1)?,
+                read_num: (*row_ptr).get_row_value(1)?,
                 read_uid_list: row.get_row_str(2)?,
-                agree_num: (&mut *row_ptr).get_row_value(3)?,
+                agree_num: (*row_ptr).get_row_value(3)?,
                 agree_uid_list: row.get_row_str(4)?,
-                comment_num: (&mut *row_ptr).get_row_value(5)?,
+                comment_num: (*row_ptr).get_row_value(5)?,
                 comment_uid_list: row.get_row_str(6)?,
-                share_num: (&mut *row_ptr).get_row_value(7)?,
+                share_num: (*row_ptr).get_row_value(7)?,
                 share_uid_list: row.get_row_str(8)?,
             })
         }
@@ -215,9 +209,9 @@ impl TryFrom<MyRow> for PopularArticle {
         };
         unsafe {
             Ok(Self {
-                aid: (&mut *row_ptr).get_row_value(0)?,
-                date: date,
-                read_num: (&mut *row_ptr).get_row_value(2)?,
+                aid: (*row_ptr).get_row_value(0)?,
+                date,
+                read_num: (*row_ptr).get_row_value(2)?,
             })
         }
     }

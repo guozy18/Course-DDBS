@@ -6,7 +6,7 @@ use std::{collections::HashMap, vec};
 #[derive(Debug, Clone)]
 pub enum DataShard {
     Shard,
-    Two,
+    OnlyTwo,
     NotShard,
 }
 
@@ -113,11 +113,11 @@ pub fn join_shard_info() -> HashMap<(String, String), DataShard> {
     // be_read join article: need only in shard2
     data_shard.insert(
         ("article".to_string(), "be_read".to_string()),
-        DataShard::Two,
+        DataShard::OnlyTwo,
     );
     data_shard.insert(
         ("be_read".to_string(), "article".to_string()),
-        DataShard::Two,
+        DataShard::OnlyTwo,
     );
 
     data_shard

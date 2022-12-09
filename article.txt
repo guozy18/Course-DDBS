@@ -1,2 +1,0 @@
-"1506000000000"|"a0"|"0"|"title0"|"technology"|"abstract of article 0"|"tags25"|"author982"|"en"|"text_a0.txt"|"image_a0_0.jpg,"|"video_a0_video.flv"
-"1506000000001"|"a1"|"1"|"title1"|"science"|"abstract of article 1"|"tags21"|"author1239"|"en"|"text_a1.txt"|"image_a1_0.jpg,image_a1_1.jpg,"|""
