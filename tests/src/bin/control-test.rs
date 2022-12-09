@@ -104,7 +104,10 @@ pub async fn main() -> AnyResult<()> {
         let start = Instant::now();
         println!("start generate {granularity} popular_rank table...");
         control_client.generate_popular_table(granularity).await?;
-        println!("generate {granularity} popular_rank table succeed, elapsed: {:?}", start.elapsed());
+        println!(
+            "generate {granularity} popular_rank table succeed, elapsed: {:?}",
+            start.elapsed()
+        );
 
         println!("start generate golden truth {granularity} popular_rank table...");
         let sql = format!(
