@@ -1,14 +1,15 @@
 use crate::DbClient;
 use common::{ServerId, StatusResult, TemporalGranularity};
 use protos::{
-    control_server_server::ControlServer, ExecRequest, ExecResponse, ServerRegisterRequest,
-    ServerRegisterResponse,
+    control_server_server::ControlServer, ExecRequest,
+    ExecResponse, ServerRegisterRequest, ServerRegisterResponse,
 };
 use protos::{DbServerMeta, ListServerStatusResponse};
 use std::collections::HashMap;
 use std::sync::{atomic::AtomicU64, RwLock};
 use tonic::{Request, Response};
 use tracing::info;
+
 
 pub struct ControlService {
     pub inner: Inner,

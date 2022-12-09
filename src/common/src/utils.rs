@@ -50,7 +50,7 @@ where
                     }
                 }
                 None => {
-                    if this.container.is_empty() {
+                    if this.container.len() == 0 {
                         return Poll::Ready(None);
                     } else {
                         let mut res = Vec::with_capacity(this.batch_size);

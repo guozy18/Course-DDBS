@@ -35,9 +35,9 @@ impl ControlService {
 
     pub async fn create_client(uri: impl AsRef<str>) -> Result<DbServerClient<Channel>> {
         let ep = Channel::builder(uri.as_ref().parse::<Uri>()?);
-        DbServerClient::connect(ep)
+        Ok(DbServerClient::connect(ep)
             .await
-            .map_err(|e| RuntimeError::TonicConnectError { source: e })
+            .map_err(|e| RuntimeError::TonicConnectError { source: e })?)
     }
 
     pub async fn cluster_init(&self) -> Result<()> {
@@ -92,4 +92,5 @@ impl ControlService {
         info!("{log_str}");
         Ok(())
     }
+
 }
