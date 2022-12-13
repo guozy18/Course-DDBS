@@ -47,6 +47,10 @@ services:
         read_only: true
         source: ../sql-data
         target: /root/sql-data
+      - type: bind
+        read_only: true
+        source: ./init.sql
+        target: /docker-entrypoint-initdb.d/init.sql
     networks:
       - ddbms-network
   mysql2:
@@ -60,6 +64,10 @@ services:
         read_only: true
         source: ../sql-data
         target: /root/sql-data
+      - type: bind
+        read_only: true
+        source: ./init.sql
+        target: /docker-entrypoint-initdb.d/init.sql
     networks:
       - ddbms-network
 
@@ -117,6 +125,40 @@ services:
         target: /root/Course-DDBS
     networks:
       - ddbms-network
+  
+  mysql-exporter:
+    image: jialianghuang/mysqld-exporter:latest
+    command: --config.my-cnf=/mysql.ini --collect.auto_increment.columns --collect.engine_innodb_status
+      --collect.mysql.innodb_table_stats --collect.mysql.innodb_index_stats
+    ports:
+      - "9104:9104"
+    volumes:
+      - type: bind
+        read_only: true
+        source: ./mysql.ini
+        target: /mysql.ini
+    networks:
+      - ddbms-network
+  
+  prometheus:
+    image: prom/prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - type: bind
+        read_only: true
+        source: ./prometheus.yml
+        target: /etc/prometheus/prometheus.yml
+    networks:
+      - ddbms-network
+
+  grafana:
+    image: grafana/grafana:9.3.1
+    ports:
+      - "9100:3000"
+    networks:
+      - ddbms-network
+    
 
 networks:
   ddbms-network:

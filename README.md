@@ -64,3 +64,13 @@ docker network ls
 # show all docker images
 docker image ls
 ```
+### 各个服务部件的监听地址要求
+- mysql服务是常规的监听在3306端口，具体监听的ip地址不太清楚，我估计是0.0.0.0:3306
+- dbserver服务需要显式给出监听的地址，在 docker compose 中直接使用server1/2:27023
+    - 它需要在创建的时候就向control发送自己的地址，为了简单并没有在运行时检查自己的ip地址，而是在启动的时候用命令行传入监听的地址
+- control服务因为要接受来自客户端的请求，因此肯定不能只绑定到docker内的网络中，它默认的地址是0.0.0.0:27022
+### docker compose 端口对应关系说明
+首先 mysql, server, control 它们目前都没有把端口publish给host，因此只能内部测试使用，后期应该只需要把control暴露给 host 方便客户端使用
+
+- prometheus：这是一个用于检测集群状态的开源工具，它暴露到host的端口为9090
+- grafana: 这是一个基于web的可视化面板，它能够把prometheus的数据呈现给用户，暴露到host的端口为9100
