@@ -32,8 +32,7 @@
   "panels": [
     {
       "datasource": {
-        "type": "prometheus",
-        "uid": "tPcrjHcVk"
+        "uid": "$datasource"
       },
       "fieldConfig": {
         "defaults": {
@@ -84,8 +83,7 @@
       "targets": [
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "tPcrjHcVk"
+            "uid": "$datasource"
           },
           "editorMode": "builder",
           "exemplar": false,
@@ -130,8 +128,7 @@
     },
     {
       "datasource": {
-        "type": "prometheus",
-        "uid": "tPcrjHcVk"
+        "uid": "$datasource"
       },
       "fieldConfig": {
         "defaults": {
@@ -188,8 +185,7 @@
       "targets": [
         {
           "datasource": {
-            "type": "prometheus",
-            "uid": "tPcrjHcVk"
+            "uid": "$datasource"
           },
           "editorMode": "builder",
           "exemplar": false,

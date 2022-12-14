@@ -151,11 +151,17 @@ services:
         target: /etc/prometheus/prometheus.yml
     networks:
       - ddbms-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   grafana:
     image: grafana/grafana:9.3.1
+    depends_on:
+      - prometheus
+    volumes:
+      - ./grafana/provisioning/:/etc/grafana/provisioning/
     ports:
-      - "9100:3000"
+      - "9200:3000"
     networks:
       - ddbms-network
     
