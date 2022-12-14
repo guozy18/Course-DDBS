@@ -226,6 +226,10 @@ impl Server for DbServer {
         Ok(Response::new(()))
     }
 
+    /// When DbServer boots, it will notify ControlServer to register itself (already done in [`DbServer::init`]).
+    /// 
+    /// This function is called by ControlServer to notify this DBServer: load the corresponding shard configuration.
+    /// (i.e. this DbServer is now responsible for shard `req.shard`)
     async fn init(&self, req: Request<protos::InitServerRequest>) -> StatusResult<Response<()>> {
         let protos::InitServerRequest { shard } = req.into_inner();
         let shard =
@@ -236,6 +240,9 @@ impl Server for DbServer {
     }
 
     /// bulk load table from local files.
+    /// the request contains a table identifier.
+    /// 
+    /// now only support `user | article | user_read`, other tables are generated dynamically in runtime
     async fn bulk_load(
         &self,
         req: Request<protos::BulkLoadRequest>,
@@ -245,6 +252,14 @@ impl Server for DbServer {
         Ok(Response::new(protos::BulkLoadResponse { result: true }))
     }
 
+    /// `stream_exec_sql` is used for *stream* purpose (e.g. read a large bunch of tuples).
+    /// 
+    /// The result tuples will response one by one, instead of like `exec_sql` return whole
+    /// results in one Response
+    /// 
+    /// Result is like Stream<Item = MyRow.serialize_to_bytes>.
+    /// 
+    /// Requester needs parse the bytes (in Response) into `MyRow`.
     async fn stream_exec_sql(
         &self,
         sql: Request<String>,
@@ -265,6 +280,16 @@ impl Server for DbServer {
         Ok(Response::new(response))
     }
 
+    /// `exec_sql_batch` is used for *batch* purpose (e.g. read a large bunch of tuples).
+    /// The request has a paramater called batch_size,
+    /// which indicates the results stream size (in terms of rows).
+    /// 
+    /// Result is like Stream<Item = Vec<MyRow>.serialize_to_bytes>.
+    /// 
+    /// Requester needs parse the item into `Vec<MyRow>`.
+    /// 
+    /// Difference between `stream_exec_sql` is that this function has better performance in most case,
+    /// because it will batch multiple tuples in one Response.
     async fn exec_sql_batch(
         &self,
         sql: Request<ExecSqlBatchRequest>,
@@ -281,6 +306,11 @@ impl Server for DbServer {
         Ok(Response::new(Box::pin(stream)))
     }
 
+    /// `exec_sql_first` is used to execute a query,
+    /// return the first tuple of the query (`Option`, the result may not exist).
+    /// 
+    /// Typical usage is when you are sure the result will only contains at most one tuple,
+    /// or you only need the first tuple.
     async fn exec_sql_first(
         &self,
         req: Request<String>,
@@ -289,6 +319,10 @@ impl Server for DbServer {
         Ok(Response::new(response))
     }
 
+    /// `exec_sql_drop` is used to execute a query,
+    /// do not result any tuples.
+    /// 
+    /// Typical usage is update, delete, create table or something that result is not needed.
     async fn exec_sql_drop(&self, req: Request<String>) -> StatusResult<Response<()>> {
         self.execute_sql_drop(req.into_inner())?;
         Ok(Response::new(()))
