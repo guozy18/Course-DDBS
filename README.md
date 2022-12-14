@@ -73,4 +73,4 @@ docker image ls
 首先 mysql, server, control 它们目前都没有把端口publish给host，因此只能内部测试使用，后期应该只需要把control暴露给 host 方便客户端使用
 
 - prometheus：这是一个用于检测集群状态的开源工具，它暴露到host的端口为9090
-- grafana: 这是一个基于web的可视化面板，它能够把prometheus的数据呈现给用户，暴露到host的端口为9100
+- grafana: 这是一个基于web的可视化面板，它能够把prometheus的数据呈现给用户，暴露到host的端口为9200
