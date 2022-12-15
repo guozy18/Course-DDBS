@@ -11,7 +11,7 @@ use tonic::transport::{Channel, Uri};
 fn format_url(url: &str) -> String {
     let scheme = &url[0..7];
     if scheme != "http://" {
-        return format!("http://{}", url);
+        return format!("http://{url}");
     }
     String::from(url)
 }

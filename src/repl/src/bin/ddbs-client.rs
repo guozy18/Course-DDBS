@@ -1,7 +1,9 @@
+use common::Result;
 use repl::Repl;
 
-fn main() -> Result<(), ()> {
-    let mut repl = Repl::default();
-    repl.run();
+#[tokio::main]
+async fn main() -> Result<()> {
+    let mut repl = Repl::new().await?;
+    repl.run().await?;
     Ok(())
 }

@@ -6,7 +6,7 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(remote = "Value")]
 pub enum ValueDef {
     NULL,

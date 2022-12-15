@@ -5,14 +5,22 @@ use tonic::Status;
 
 mod db_types;
 mod profiler;
+mod result_set;
 mod shard_info;
 mod symbol_table;
 pub mod utils;
 
 pub use db_types::{BeRead, MyDate, MyRow, PopularArticle, ValueAdaptor, ValueDef};
-pub use profiler::Profiler;
+pub use profiler::{Profile, Profiler};
+pub use result_set::{ExecuteResult, ResultSet};
 pub use shard_info::{get_join_condition, get_shards_info, join_shard_info, DataShard};
 pub use symbol_table::SymbolTable;
+
+// #[derive(Debug, PartialEq)]
+// pub enum FormatError {
+//     JsonParseError,
+//     JsonContentError,
+// }
 
 #[derive(Error, Debug)]
 pub enum RuntimeError {
@@ -53,6 +61,14 @@ pub enum RuntimeError {
     TomlParseError(#[from] toml::de::Error),
     #[error(transparent)]
     IoError(#[from] std::io::Error),
+    #[error("read line error: Interrupted")]
+    Interrupted,
+    #[error("other read line error")]
+    ReadlineError,
+    #[error("json parse error")]
+    JsonParseError,
+    #[error("json content error")]
+    JsonContentError,
 }
 
 pub type StatusResult<T> = std::result::Result<T, Status>;
@@ -69,6 +85,12 @@ impl From<Utf8Error> for RuntimeError {
         RuntimeError::DBTypeParseError(e.to_string())
     }
 }
+
+// impl From<FormatError> for RuntimeError {
+//     fn from(value: FormatError) -> Self {
+//         RuntimeError::
+//     }
+// }
 
 pub type ServerId = u64;
 
@@ -92,17 +114,12 @@ impl TemporalGranularity {
     /// - `column_name` column_name of timestamp
     pub fn to_column_sql(&self, column_name: &str) -> String {
         match self {
-            Self::Daily => format!(
-                "DATE(FROM_UNIXTIME(CAST({} as unsigned) DIV 1000))",
-                column_name
-            ),
-            Self::Weekly => format!(
-                "YEARWEEK(FROM_UNIXTIME(CAST({} as unsigned) DIV 1000))",
-                column_name
-            ),
+            Self::Daily => format!("DATE(FROM_UNIXTIME(CAST({column_name} as unsigned) DIV 1000))"),
+            Self::Weekly => {
+                format!("YEARWEEK(FROM_UNIXTIME(CAST({column_name} as unsigned) DIV 1000))")
+            }
             Self::Monthly => format!(
-                "EXTRACT(YEAR_MONTH FROM FROM_UNIXTIME(CAST({} as unsigned) DIV 1000))",
-                column_name
+                "EXTRACT(YEAR_MONTH FROM FROM_UNIXTIME(CAST({column_name} as unsigned) DIV 1000))"
             ),
         }
     }
@@ -123,7 +140,7 @@ impl Display for TemporalGranularity {
             Self::Weekly => "weekly",
             Self::Monthly => "monthly",
         };
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 

@@ -111,8 +111,7 @@ mod test_optimize {
         let shard_select = query_context.rewrite_selection(*query.body);
         for (server_id, server_select) in shard_select {
             println!(
-                "Final, get rewrite select context \nserver_id: {:#?} server_select:\n{:#?}\n",
-                server_id, server_select
+                "Final, get rewrite select context \nserver_id: {server_id:#?} server_select:\n{server_select:#?}\n"
             );
         }
     }
@@ -151,8 +150,7 @@ mod test_optimize {
         for iter in shard_select {
             for (server_id, server_select) in iter {
                 println!(
-                    "Final, get rewrite join \nserver_id: {:#?} server_select:\n{:#?}\n",
-                    server_id, server_select
+                    "Final, get rewrite join \nserver_id: {server_id:#?} server_select:\n{server_select:#?}\n"
                 );
             }
         }
@@ -172,11 +170,11 @@ mod test_optimize {
     #[test]
     fn test_optimizer() {
         let test_sqls = [
-            "SELECT * FROM user AS a INNER JOIN article AS b ON a.uid = b.uid 
-                where a.uid = 100
-                ORDER BY b.timestamp DESC 
-                LIMIT 5",
-            "SELECT * FROM user AS a INNER JOIN user_read AS b ON a.uid = b.aid 
+            // "SELECT * FROM user AS a INNER JOIN article AS b ON a.uid = b.aid
+            //     where a.uid = 100
+            //     ORDER BY b.timestamp DESC
+            //     LIMIT 5",
+            "SELECT * FROM user AS a INNER JOIN user_read AS b ON a.uid = b.uid 
                 where a.region = \"Beijing\"
                 ORDER BY b.timestamp DESC 
                 LIMIT 5",
@@ -190,7 +188,7 @@ mod test_optimize {
             "SELECT name, gender FROM user WHERE region = \"HongKong\" AND region = \"Beijing\"",
         ];
         for test_sql in test_sqls {
-            println!("Origin sql: \n{:#}\n", test_sql);
+            println!("Origin sql: \n{test_sql:#}\n");
             let mut optimizer = construct_optimzier_mock(test_sql);
             optimizer.parse();
             let result = optimizer.rewrite();
@@ -198,8 +196,7 @@ mod test_optimize {
             for (number, iter) in result.0.into_iter().enumerate() {
                 for (shard_id, shard_sql) in iter {
                     println!(
-                                "Result: Iter: iter number {}, get rewrite select context, server_id: {:#?} shard_sql:\n{:#?}\n",
-                                number, shard_id, shard_sql
+                                "Result: Iter: iter number {number}, get rewrite select context, server_id: {shard_id:#?} shard_sql:\n{shard_sql:#?}\n"
                             );
                 }
             }

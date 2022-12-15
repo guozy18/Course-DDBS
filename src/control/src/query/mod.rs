@@ -3,13 +3,16 @@ mod query_context;
 mod util;
 use std::collections::HashMap;
 
+use flexbuffers::Reader;
 pub use query_context::QueryContext;
 pub use util::*;
 
 use crate::ControlService;
-use common::{Result, ServerId, StatusResult};
+use common::{ExecuteResult, MyRow, Profile, Profiler, Result, ResultSet, ServerId, StatusResult};
+use mysql::Value;
 use optimizer::Optimizer;
 use protos::{DbServerMeta, DbStatus, ExecRequest};
+use serde::Deserialize;
 use sqlparser::ast::{Expr, JoinOperator, OrderByExpr};
 
 type RewriteSqls = Vec<Vec<(ServerId, String)>>;
@@ -52,14 +55,20 @@ fn rewrite_sql(
     (final_sql, join_operator, order_by_and_limit)
 }
 
+fn parse_row(_row: &MyRow, _header: &[String]) -> Vec<Value> {
+    unimplemented!()
+}
+
 impl ControlService {
     // query from client
     pub async fn exec(&self, req: ExecRequest) -> Result<String> {
         // Step1. get the sql query string and get the shards information.
         let ExecRequest { statement } = req;
+        let mut result_set = ResultSet::new();
         let shards = self.inner.db_server_meta.read().unwrap().clone();
         // Step2. Refactoring queries and getting distributed query sql.
         let (rewrite_sqls, join_operator, order_by_and_limit) = rewrite_sql(statement, shards);
+        result_set.set_header(vec![]);
         // Step3. Execute rewrite sqls.
         let final_result = if rewrite_sqls.len() == 1 {
             let shard_sql = rewrite_sqls.get(0).unwrap().clone();
@@ -82,6 +91,31 @@ impl ControlService {
             for result in results {
                 final_results.append(&mut result?);
             }
+
+            let tmp = final_results.clone();
+
+            let s = Reader::get_root(tmp.as_slice()).unwrap();
+            let rows = Vec::<MyRow>::deserialize(s)?;
+            // let mut row = MyRow::deserialize(s)?;
+            // let _date: MyDate = row
+            //     .get_mut(0)
+            //     .ok_or_else(|| {
+            //         RuntimeError::DBTypeParseError(
+            //             "cannot get index 0 for DISTINCT popularDate".to_owned(),
+            //         )
+            //     })?
+            //     .take()
+            //     .unwrap()
+            //     .try_into()?;
+            let header = &result_set.header;
+            let x = rows
+                .iter()
+                .map(|row| parse_row(row, header))
+                .collect::<Vec<_>>();
+
+            result_set.table = x;
+
+            // dates.insert(date);
             final_results
         } else if rewrite_sqls.len() == 2 {
             // Query to get the data of the left branch of join
@@ -142,7 +176,12 @@ impl ControlService {
 
         // collect the result of the two query to get the final result.
         // execute join operate
+        let final_result = serde_json::json!(ExecuteResult {
+            result_set: Some(result_set),
+            profile: Profile::default(),
+        })
+        .to_string();
 
-        Ok(String::new())
+        Ok(final_result)
     }
 }

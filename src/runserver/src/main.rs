@@ -53,7 +53,7 @@ pub enum ServerType {
 
 pub fn parse_cli_args() -> CliArgs {
     let args = CliArgs::parse();
-    println!("{:#?}", args);
+    println!("{args:#?}");
     args
 }
 
@@ -128,7 +128,7 @@ where
             String::from(":").yellow(),
             meta.line().unwrap_or(0).to_string().yellow(),
         );
-        write!(writer, "{}", message)?;
+        write!(writer, "{message}")?;
         ctx.format_fields(writer.by_ref(), event)?;
         writeln!(writer)
     }
