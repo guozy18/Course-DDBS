@@ -13,11 +13,6 @@ pub struct Opts {
 }
 
 #[test]
-fn test_atlas_opts() {
-    assert!(Opts::try_parse_from([
-        "./target/debug/atlas",
-        "--conrtol-server",
-        "127.0.0.1:33024"
-    ])
-    .is_ok());
+fn test_opts() {
+    assert!(Opts::try_parse_from(["127.0.0.1:33024"]).is_ok());
 }
