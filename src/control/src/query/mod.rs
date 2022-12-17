@@ -8,7 +8,7 @@ pub use query_context::QueryContext;
 pub use util::*;
 
 use crate::ControlService;
-use common::{ExecuteResult, MyRow, Profile, Profiler, Result, ResultSet, ServerId, StatusResult};
+use common::{ExecuteResult, MyRow, Profile, Result, ResultSet, ServerId, StatusResult};
 use mysql::Value;
 use optimizer::Optimizer;
 use protos::{DbServerMeta, DbShard, DbStatus, ExecRequest};
@@ -58,8 +58,8 @@ fn rewrite_sql(
     (final_sql, join_operator, order_by_and_limit)
 }
 
-fn parse_row(_row: &MyRow, _header: &[String]) -> Vec<Value> {
-    unimplemented!()
+fn parse_row(row: &MyRow, _header: &[String]) -> Vec<Value> {
+    row.get_raw_value().unwrap()
 }
 
 impl ControlService {
