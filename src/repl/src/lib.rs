@@ -87,7 +87,7 @@ impl Repl {
             Ok(statement) => {
                 let statement = statement.trim();
                 if statement.starts_with(':') {
-                    println!("Test1: input control command not sql.");
+                    // println!("Input control command not sql.");
                     if let Some(args) = shlex::split(statement) {
                         handle_commands(self, args).await;
                     } else {
