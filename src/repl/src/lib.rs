@@ -1,7 +1,10 @@
+mod commands;
 mod formatter;
 pub mod opts;
 
 use clap::Parser;
+use commands::handle_commands;
+use mysql::Pool;
 use opts::Opts;
 
 use common::{Result, RuntimeError};
@@ -10,7 +13,9 @@ use std::{path::PathBuf, time::Duration};
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
 
-use protos::{control_server_client::ControlServerClient, ExecRequest};
+use protos::{
+    control_server_client::ControlServerClient, db_server_client::DbServerClient, ExecRequest,
+};
 use tonic::transport::{Channel, Uri};
 
 #[derive(Debug)]
@@ -18,7 +23,9 @@ pub struct Repl {
     editor: Editor<()>,
     prompt: String,
     control_client: ControlServerClient<Channel>,
+    store_client: Vec<DbServerClient<Channel>>,
     history_file: PathBuf,
+    conn_pool: Pool,
 }
 
 impl Repl {
@@ -36,14 +43,31 @@ impl Repl {
         let prompt = String::new();
         let control_client = ControlServerClient::connect(channel).await?;
 
+        let mut store_client = vec![];
+        for store_server in opts.store_server {
+            let channel = match format!("http://{store_server}").parse::<Uri>() {
+                Ok(uri) => Channel::builder(uri),
+                Err(e) => {
+                    panic!("Server address format is not parse: {e}");
+                }
+            };
+            let shard_store_client = DbServerClient::connect(channel).await?;
+            store_client.push(shard_store_client);
+        }
+        // s
+
         let history_file = Self::get_history_file();
         let _ = editor.load_history(&history_file).is_ok();
+
+        let conn_pool = Pool::new("mysql://root:mysql1@mysql1/test")?;
 
         Ok(Repl {
             editor,
             prompt,
             control_client,
+            store_client,
             history_file,
+            conn_pool,
         })
     }
 
@@ -61,8 +85,14 @@ impl Repl {
     async fn process(&mut self, line: rustyline::Result<String>) -> Result<()> {
         match line {
             Ok(statement) => {
+                let statement = statement.trim();
                 if statement.starts_with(':') {
                     println!("Test1: input control command not sql.");
+                    if let Some(args) = shlex::split(statement) {
+                        handle_commands(self, args).await;
+                    } else {
+                        println!("Error on parsing the input command.");
+                    }
                 } else {
                     let timer = std::time::Instant::now();
                     std::thread::sleep(Duration::from_millis(1));
@@ -71,7 +101,7 @@ impl Repl {
                     let result = self
                         .control_client
                         .exec(ExecRequest {
-                            statement: statement.clone(),
+                            statement: statement.to_string(),
                         })
                         .await;
 

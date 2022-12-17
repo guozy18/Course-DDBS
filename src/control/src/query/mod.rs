@@ -11,7 +11,7 @@ use crate::ControlService;
 use common::{ExecuteResult, MyRow, Profile, Profiler, Result, ResultSet, ServerId, StatusResult};
 use mysql::Value;
 use optimizer::Optimizer;
-use protos::{DbServerMeta, DbStatus, ExecRequest, DbShard};
+use protos::{DbServerMeta, DbShard, DbStatus, ExecRequest};
 use serde::Deserialize;
 use sqlparser::ast::{Expr, JoinOperator, OrderByExpr};
 
