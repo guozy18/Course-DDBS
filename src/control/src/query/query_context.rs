@@ -3,12 +3,15 @@ use std::vec;
 
 use common::{DataShard, ServerId, SymbolTable};
 
-use sqlparser::ast::{Expr, JoinOperator, OrderByExpr, Query, Select, SetExpr, Statement, Value};
+use sqlparser::ast::{
+    Expr, Join, JoinOperator, OrderByExpr, Query, Select, SelectItem, SetExpr, Statement,
+    TableFactor, TableWithJoins, Value,
+};
 use sqlparser::dialect::{Dialect, GenericDialect};
 
 use super::{
-    extract_selection, get_expr_shard, get_table_factor, get_wild_projection, reslove_from,
-    return_expr_op, rewrite_placeholder,
+    extract_selection, get_expr_shard, get_table_factor, get_table_info, get_wild_projection,
+    reslove_from, return_expr_op, rewrite_placeholder,
 };
 
 #[derive(Debug)]
@@ -62,6 +65,53 @@ impl QueryContext {
 
     pub fn extract_limit(&self, query: &Query) -> Option<Expr> {
         query.limit.clone()
+    }
+
+    pub fn get_header(&self, query_body: SetExpr) -> Vec<String> {
+        fn reslove_table_name(tables: TableWithJoins) -> Vec<String> {
+            let TableWithJoins { relation, joins } = tables;
+            let mut table_names = vec![];
+            if let TableFactor::Table { name, .. } = relation {
+                let table_name = name.0[0].value.clone();
+                table_names.push(table_name);
+            }
+            if joins.len() == 1 {
+                let Join { relation, .. } = joins.get(0).unwrap().clone();
+                if let TableFactor::Table { name, .. } = relation {
+                    let table_name = name.0[0].value.clone();
+                    table_names.push(table_name);
+                }
+            }
+            table_names
+        }
+
+        let mut symbol_table = vec![];
+        if let SetExpr::Select(select) = query_body {
+            let Select {
+                projection, from, ..
+            } = *select;
+            let mut table_names = vec![];
+            for tables in from {
+                let table_name = reslove_table_name(tables);
+                let table_info = get_table_info();
+                for name in table_name {
+                    table_names.append(&mut table_info.get(&name).unwrap().clone());
+                }
+            }
+
+            for projection_item in projection {
+                match projection_item {
+                    SelectItem::Wildcard => {
+                        symbol_table.append(&mut table_names.clone());
+                    }
+                    SelectItem::UnnamedExpr(iden) => {
+                        symbol_table.push(iden.to_string());
+                    }
+                    _ => {}
+                }
+            }
+        }
+        symbol_table
     }
 }
 

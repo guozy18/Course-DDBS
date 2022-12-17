@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 use flexbuffers::Reader;
 pub use query_context::QueryContext;
+use tracing::debug;
 pub use util::*;
 
 use crate::ControlService;
@@ -21,7 +22,12 @@ type OrderByAndLimit = Option<(Vec<OrderByExpr>, Option<Expr>)>;
 fn rewrite_sql(
     statement: String,
     shards_info: HashMap<ServerId, DbServerMeta>,
-) -> (RewriteSqls, Option<JoinOperator>, OrderByAndLimit) {
+) -> (
+    RewriteSqls,
+    Vec<String>,
+    Option<JoinOperator>,
+    OrderByAndLimit,
+) {
     // let shards = shards_info
     //     .into_iter()
     //     .filter_map(|(server_id, server_meta)| {
@@ -32,7 +38,7 @@ fn rewrite_sql(
     //         }
     //     });
     let shards = vec![(0u64, DbShard::One), (1u64, DbShard::Two)].into_iter();
-    println!("debug: shard_info: {shards:#?}");
+    debug!("debug: shard_info: {shards:#?}");
     let mut optimizer = Optimizer::new(statement, shards);
 
     // 1. parser sql query and fill context
@@ -40,9 +46,10 @@ fn rewrite_sql(
 
     // 2. get the order by and limit information
     let order_by_and_limit = optimizer.extract_order_by_and_limit();
+    let header = optimizer.extract_header();
 
     let (rewrite_sql, join_operator) = optimizer.rewrite();
-    println!("debug: rewrite sql{rewrite_sql:#?}");
+    debug!("debug: rewrite sql{rewrite_sql:#?}");
     let mut final_sql = Vec::new();
     for single_rewrite_sql in rewrite_sql {
         final_sql.push(
@@ -55,7 +62,7 @@ fn rewrite_sql(
         );
     }
 
-    (final_sql, join_operator, order_by_and_limit)
+    (final_sql, header, join_operator, order_by_and_limit)
 }
 
 fn parse_row(row: &MyRow, _header: &[String]) -> Vec<Value> {
@@ -70,9 +77,11 @@ impl ControlService {
         let mut result_set = ResultSet::new();
         let shards = self.inner.db_server_meta.read().unwrap().clone();
         // Step2. Refactoring queries and getting distributed query sql.
-        let (rewrite_sqls, join_operator, order_by_and_limit) = rewrite_sql(statement, shards);
-        println!("Step1: rewrite sqls: {rewrite_sqls:#?}");
-        result_set.set_header(vec!["name".to_string()]);
+        let (rewrite_sqls, header, join_operator, order_by_and_limit) =
+            rewrite_sql(statement, shards);
+        debug!("Step1: rewrite sqls: {rewrite_sqls:#?}");
+        debug!("Step1: get query header: {header:#?}");
+        result_set.set_header(header);
         // Step3. Execute rewrite sqls.
         let final_result = if rewrite_sqls.len() == 1 {
             let shard_sql = rewrite_sqls.get(0).unwrap().clone();
@@ -93,7 +102,7 @@ impl ControlService {
 
             let mut final_results = Vec::<u8>::new();
             for (server_id, result) in results.into_iter().enumerate() {
-                println!("debug: in {server_id:#?}, get result: {result:#?}");
+                debug!("debug: in {server_id:#?}, get result: {result:#?}");
                 final_results.append(&mut result?);
             }
 
@@ -150,26 +159,21 @@ impl ControlService {
         };
 
         // Step 4. Filter the result by the order by and limit information.
-        // if let Some((order_by, limit))  = order_by_and_limit {
-        //     do_order_by_and limit
-        // }
-        // let final_result = do_order_by_and_limit(final_result, order_by_and_limit);
-
-        println!("debug: tmp\n {final_result:?}");
+        debug!("debug: tmp\n {final_result:?}");
         let s = Reader::get_root(final_result.as_slice()).unwrap();
         let rows = Vec::<MyRow>::deserialize(s)?;
-        println!("debug: rows \n {rows:#?}");
+        debug!("debug: rows \n {rows:#?}");
         let header = &result_set.header;
         let vec_value = rows
             .iter()
             .map(|row| parse_row(row, header))
             .collect::<Vec<_>>();
 
-        println!("debug: defore order_by and limit \n {final_result:#?}");
+        debug!("debug: defore order_by and limit \n {final_result:#?}");
         let final_result = do_order_by_and_limit(vec_value, order_by_and_limit);
-        println!("debug: result_set \n {final_result:#?}");
+        debug!("debug: result_set \n {final_result:#?}");
         result_set.table = final_result;
-        println!("debug: after order_by and limit: result_set \n {result_set:#?}");
+        debug!("debug: after order_by and limit: result_set \n {result_set:#?}");
 
         // collect the result of the two query to get the final result.
         // execute join operate
@@ -179,7 +183,7 @@ impl ControlService {
         })
         .to_string();
 
-        println!("debug: final result{final_result:#?}");
+        debug!("debug: final result{final_result:#?}");
 
         Ok(final_result)
     }

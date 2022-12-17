@@ -82,6 +82,14 @@ impl Optimizer {
             )
         })
     }
+
+    pub fn extract_header(&self) -> Vec<String> {
+        if let Some(query) = self.ctx.is_query() {
+            self.ctx.get_header(*query.body)
+        } else {
+            vec![]
+        }
+    }
 }
 
 #[cfg(test)]
@@ -155,6 +163,7 @@ mod test_optimize {
             }
         }
         println!("get join operator: \n{join_operator:#?}\n");
+        // println!("get symbol table: \n{symbol_table:#?}\n");
     }
 
     fn construct_optimzier_mock(query: &str) -> Optimizer {
@@ -170,10 +179,10 @@ mod test_optimize {
     #[test]
     fn test_optimizer() {
         let test_sqls = [
-            // "SELECT * FROM user AS a INNER JOIN article AS b ON a.uid = b.aid
-            //     where a.uid = 100
-            //     ORDER BY b.timestamp DESC
-            //     LIMIT 5",
+            "SELECT * FROM user AS a INNER JOIN article AS b ON a.uid = b.aid
+                where a.uid = 100
+                ORDER BY b.timestamp DESC
+                LIMIT 5",
             // "SELECT * FROM user AS a INNER JOIN user_read AS b ON a.uid = b.uid
             //     where a.region = \"Beijing\"
             //     ORDER BY b.timestamp DESC
@@ -201,6 +210,38 @@ mod test_optimize {
                             );
                 }
             }
+        }
+    }
+
+    #[test]
+    fn test_get_header() {
+        let test_sqls = [
+            "SELECT * FROM user AS a INNER JOIN article AS b ON a.uid = b.aid
+                where a.uid = 100
+                ORDER BY b.timestamp DESC
+                LIMIT 5",
+            "SELECT * FROM user AS a INNER JOIN user_read AS b ON a.uid = b.uid
+                where a.region = \"Beijing\"
+                ORDER BY b.timestamp DESC
+                LIMIT 5",
+            "SELECT a.title, b.readNum FROM user AS a INNER JOIN article AS b ON a.uid = b.aid
+                where a.uid = 100
+                ORDER BY b.timestamp DESC
+                LIMIT 5",
+            "SELECT name, gender FROM user WHERE region = \"Beijing\"",
+            "SELECT name, gender FROM user WHERE region = \"HongKong\" AND region = \"HongKong\"",
+            "SELECT name, gender FROM user WHERE id < 100 AND region = \"Beijing\"",
+            "SELECT name, gender FROM user WHERE region = \"HongKong\" AND region = \"Beijing\"",
+            "SELECT name, gender FROM user limit 5",
+            "SELECT name FROM user limit 5",
+            "SELECT * FROM user,article limit 5",
+        ];
+        for test_sql in test_sqls {
+            println!("Origin sql: \n{test_sql:#}\n");
+            let mut optimizer = construct_optimzier_mock(test_sql);
+            optimizer.parse();
+            let header = optimizer.extract_header();
+            println!("Result header: {header:#?}\n");
         }
     }
 }
@@ -242,6 +283,9 @@ mod test {
         let dialect = GenericDialect {};
 
         let res = Parser::parse_sql(&dialect, "SELECT * FROM User, Article").unwrap();
+        println!("{res:#?}");
+
+        let res = Parser::parse_sql(&dialect, "SELECT name, gender FROM User, Article").unwrap();
         println!("{res:#?}");
 
         let x = res[0].clone();
