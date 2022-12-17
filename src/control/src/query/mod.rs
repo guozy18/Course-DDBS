@@ -68,7 +68,8 @@ impl ControlService {
         let shards = self.inner.db_server_meta.read().unwrap().clone();
         // Step2. Refactoring queries and getting distributed query sql.
         let (rewrite_sqls, join_operator, order_by_and_limit) = rewrite_sql(statement, shards);
-        result_set.set_header(vec![]);
+        println!("Step1: rewrite sqls: {rewrite_sqls:#?}");
+        result_set.set_header(vec!["id".to_string()]);
         // Step3. Execute rewrite sqls.
         let final_result = if rewrite_sqls.len() == 1 {
             let shard_sql = rewrite_sqls.get(0).unwrap().clone();
@@ -94,6 +95,7 @@ impl ControlService {
 
             let tmp = final_results.clone();
 
+            println!("debug: tmp\n {tmp:?}");
             let s = Reader::get_root(tmp.as_slice()).unwrap();
             let rows = Vec::<MyRow>::deserialize(s)?;
             // let mut row = MyRow::deserialize(s)?;
@@ -107,6 +109,7 @@ impl ControlService {
             //     .take()
             //     .unwrap()
             //     .try_into()?;
+            println!("debug: rows \n {rows:#?}");
             let header = &result_set.header;
             let x = rows
                 .iter()
@@ -114,6 +117,8 @@ impl ControlService {
                 .collect::<Vec<_>>();
 
             result_set.table = x;
+
+            println!("debug: result_set \n {result_set:#?}");
 
             // dates.insert(date);
             final_results
