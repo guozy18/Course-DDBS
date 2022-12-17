@@ -31,6 +31,7 @@ fn rewrite_sql(
                 None
             }
         });
+    println!("debug: shard_info: {shards:#?}");
     let mut optimizer = Optimizer::new(statement, shards);
 
     // 1. parser sql query and fill context
@@ -40,6 +41,7 @@ fn rewrite_sql(
     let order_by_and_limit = optimizer.extract_order_by_and_limit();
 
     let (rewrite_sql, join_operator) = optimizer.rewrite();
+    println!("debug: rewrite sql{rewrite_sql:#?}");
     let mut final_sql = Vec::new();
     for single_rewrite_sql in rewrite_sql {
         final_sql.push(

@@ -163,7 +163,7 @@ mod test_optimize {
         // "SELECT name, gender FROM user WHERE region = \"Beijing\" AND region = \"Beijing\"".to_string();
         // "SELECT name, gender FROM user WHERE region = \"HongKong\" AND region = \"HongKong\"".to_string();
         // "SELECT name, gender FROM user WHERE region = \"HongKong\" AND region = \"Beijing\"".to_string();
-        let shards = vec![(1, DbShard::One), (2, DbShard::Two)];
+        let shards = vec![(0, DbShard::One), (1, DbShard::Two)];
         Optimizer::new(query, shards.into_iter())
     }
 
@@ -174,18 +174,19 @@ mod test_optimize {
             //     where a.uid = 100
             //     ORDER BY b.timestamp DESC
             //     LIMIT 5",
-            "SELECT * FROM user AS a INNER JOIN user_read AS b ON a.uid = b.uid 
-                where a.region = \"Beijing\"
-                ORDER BY b.timestamp DESC 
-                LIMIT 5",
-            "SELECT a.title, b.readNum FROM user AS a INNER JOIN article AS b ON a.uid = b.aid 
-                where a.uid = 100
-                ORDER BY b.timestamp DESC 
-                LIMIT 5",
-            "SELECT name, gender FROM user WHERE region = \"Beijing\"",
-            "SELECT name, gender FROM user WHERE region = \"HongKong\" AND region = \"HongKong\"",
-            "SELECT name, gender FROM user WHERE id < 100 AND region = \"Beijing\"",
-            "SELECT name, gender FROM user WHERE region = \"HongKong\" AND region = \"Beijing\"",
+            // "SELECT * FROM user AS a INNER JOIN user_read AS b ON a.uid = b.uid 
+            //     where a.region = \"Beijing\"
+            //     ORDER BY b.timestamp DESC 
+            //     LIMIT 5",
+            // "SELECT a.title, b.readNum FROM user AS a INNER JOIN article AS b ON a.uid = b.aid 
+            //     where a.uid = 100
+            //     ORDER BY b.timestamp DESC 
+            //     LIMIT 5",
+            // "SELECT name, gender FROM user WHERE region = \"Beijing\"",
+            // "SELECT name, gender FROM user WHERE region = \"HongKong\" AND region = \"HongKong\"",
+            // "SELECT name, gender FROM user WHERE id < 100 AND region = \"Beijing\"",
+            // "SELECT name, gender FROM user WHERE region = \"HongKong\" AND region = \"Beijing\"",
+            "SELECT name, gender FROM user limit 5",
         ];
         for test_sql in test_sqls {
             println!("Origin sql: \n{test_sql:#}\n");

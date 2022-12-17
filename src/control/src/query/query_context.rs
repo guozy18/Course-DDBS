@@ -162,8 +162,8 @@ impl QueryContext {
                             }
                             // only to need query in shard2, no need rewrite
                             Some((DataShard::OnlyTwo, _)) => {
-                                final_query.insert(1, None);
-                                final_query.insert(2, Some(query_body));
+                                final_query.insert(0, None);
+                                final_query.insert(1, Some(query_body));
                                 return (vec![final_query], None);
                             }
                             _ => final_query = self.rewrite_selection(query_body),
