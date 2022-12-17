@@ -190,6 +190,8 @@ impl ControlService {
         })
         .to_string();
 
+        println!("debug: final result{final_result:#?}");
+
         Ok(final_result)
     }
 }
