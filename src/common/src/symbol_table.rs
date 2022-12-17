@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 /// The `SymbolTable` contains two (redundant) data structures:
 /// - `symbols` is a `Vec`, recording the insertion order;
 /// - `lookup` is a `HashMap`, supporting fast name resolution.

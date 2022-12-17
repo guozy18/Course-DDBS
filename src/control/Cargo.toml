@@ -8,6 +8,7 @@ common = { path = "../common" }
 protos = { path = "../protos" }
 async-trait = "0.1.51"
 tonic = "0.6.2"
+mysql = "23.0.0"
 tokio = "1.11"
 tracing = "0.1.33"
 futures = "0.3.15"
@@ -15,3 +16,4 @@ sqlparser = "0.27"
 flexbuffers = "2.0"
 serde = "1.0"
 itertools = "0.10"
+serde_json = "1.0"

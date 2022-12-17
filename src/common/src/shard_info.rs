@@ -63,8 +63,8 @@ pub fn get_shards_info() -> HashMap<i32, Vec<Expr>> {
     };
     db2_info.push(region_hongkong);
 
-    shards_info.insert(1, db1_info);
-    shards_info.insert(2, db2_info);
+    shards_info.insert(0, db1_info);
+    shards_info.insert(1, db2_info);
     shards_info
 }
 

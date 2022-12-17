@@ -1,5 +1,7 @@
 // use sqlparser::ast::{Expr, JoinOperator, OrderByExpr};
 
+use std::collections::HashMap;
+
 use common::{get_join_condition, get_shards_info, join_shard_info, DataShard, SymbolTable};
 use sqlparser::ast::{
     BinaryOperator, Expr, Ident, Join, JoinOperator, ObjectName, OrderByExpr, SelectItem,
@@ -15,6 +17,81 @@ pub fn reslove_table_factor(relation: TableFactor) -> Option<(String, Option<Str
         }
         _ => None,
     }
+}
+
+pub fn get_table_info() -> HashMap<String, Vec<String>> {
+    let mut table_info = HashMap::new();
+    let user_prop = vec![
+        "id".to_string(),
+        "timestamp".to_string(),
+        "uid".to_string(),
+        "name".to_string(),
+        "gender".to_string(),
+        "email".to_string(),
+        "phone".to_string(),
+        "dept".to_string(),
+        "grade".to_string(),
+        "language".to_string(),
+        "region".to_string(),
+        "role".to_string(),
+        "preferTags".to_string(),
+        "obtainedCredits".to_string(),
+    ];
+    table_info.insert("user".to_string(), user_prop);
+
+    let article_prop = vec![
+        "id".to_string(),
+        "timestamp".to_string(),
+        "aid".to_string(),
+        "title".to_string(),
+        "category".to_string(),
+        "abstract".to_string(),
+        "articleTags".to_string(),
+        "authors".to_string(),
+        "language".to_string(),
+        "text".to_string(),
+        "image".to_string(),
+        "video".to_string(),
+    ];
+    table_info.insert("article".to_string(), article_prop);
+
+    let read_prop = vec![
+        "id".to_string(),
+        "timestamp".to_string(),
+        "uid".to_string(),
+        "aid".to_string(),
+        "readTimeLength".to_string(),
+        "aggreeOrNot".to_string(),
+        "commentOrNot".to_string(),
+        "commentDetail".to_string(),
+        "shareOrNot".to_string(),
+    ];
+    table_info.insert("user_read".to_string(), read_prop);
+
+    let be_read_prop = vec![
+        "id".to_string(),
+        "timestamp".to_string(),
+        "aid".to_string(),
+        "readNum".to_string(),
+        "readUidList".to_string(),
+        "commentNum".to_string(),
+        "commentUidList".to_string(),
+        "agreeNum".to_string(),
+        "agreeUidList".to_string(),
+        "shareNum".to_string(),
+        "shareUidList".to_string(),
+    ];
+    table_info.insert("be_read".to_string(), be_read_prop);
+
+    let popular_rank_prop = vec![
+        "id".to_string(),
+        "timestamp".to_string(),
+        "temporalGranularity".to_string(),
+        "articleAidList".to_string(),
+    ];
+    table_info.insert("popular_rank".to_string(), popular_rank_prop);
+
+    table_info
 }
 
 /// Return value: SymbolTable, Option<DataShard, Joinoperator>
@@ -205,8 +282,16 @@ pub fn do_join(left: Vec<u8>, right: Vec<u8>, join_operator: Option<JoinOperator
 }
 
 pub fn do_order_by_and_limit(
-    results: Vec<u8>,
-    join_operator: Option<(Vec<OrderByExpr>, Option<Expr>)>,
-) -> Vec<u8> {
-    unimplemented!()
+    results: Vec<Vec<mysql::Value>>,
+    order_by_and_limit: Option<(Vec<OrderByExpr>, Option<Expr>)>,
+) -> Vec<Vec<mysql::Value>> {
+    if let Some((_order_by, Some(limit))) = order_by_and_limit {
+        let return_number = match limit {
+            Expr::Value(Value::Number(number, _)) => number.parse::<usize>().unwrap(),
+            _ => results.len(),
+        };
+        results[0..return_number].to_vec()
+    } else {
+        results
+    }
 }

@@ -6,7 +6,7 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(remote = "Value")]
 pub enum ValueDef {
     NULL,
@@ -21,7 +21,7 @@ pub enum ValueDef {
     Time(bool, u32, u8, u8, u8, u32),
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ValueAdaptor(#[serde(with = "ValueDef")] Value);
 impl ValueAdaptor {
     pub fn new(v: Value) -> Self {
@@ -129,6 +129,20 @@ impl MyRow {
 
     pub fn get_row_str(&self, idx: usize) -> Result<&str> {
         Ok(std::str::from_utf8(self.get_row_bytes(idx)?)?)
+    }
+
+    pub fn get_raw_value(&self) -> Result<Vec<Value>> {
+        let res = self
+            .0
+            .clone()
+            .into_iter()
+            .map(|value| {
+                value
+                    .map(|value_adaptor| value_adaptor.0)
+                    .ok_or_else(|| RuntimeError::ReadlineError)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        Ok(res)
     }
 }
 
