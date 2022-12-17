@@ -11,7 +11,7 @@ use crate::ControlService;
 use common::{ExecuteResult, MyRow, Profile, Profiler, Result, ResultSet, ServerId, StatusResult};
 use mysql::Value;
 use optimizer::Optimizer;
-use protos::{DbServerMeta, DbStatus, ExecRequest};
+use protos::{DbServerMeta, DbStatus, ExecRequest, DbShard};
 use serde::Deserialize;
 use sqlparser::ast::{Expr, JoinOperator, OrderByExpr};
 
@@ -22,15 +22,16 @@ fn rewrite_sql(
     statement: String,
     shards_info: HashMap<ServerId, DbServerMeta>,
 ) -> (RewriteSqls, Option<JoinOperator>, OrderByAndLimit) {
-    let shards = shards_info
-        .into_iter()
-        .filter_map(|(server_id, server_meta)| {
-            if server_meta.status() == DbStatus::Alive && server_meta.shard.is_some() {
-                Some((server_id, server_meta.shard()))
-            } else {
-                None
-            }
-        });
+    // let shards = shards_info
+    //     .into_iter()
+    //     .filter_map(|(server_id, server_meta)| {
+    //         if server_meta.status() == DbStatus::Alive && server_meta.shard.is_some() {
+    //             Some((server_id, server_meta.shard()))
+    //         } else {
+    //             None
+    //         }
+    //     });
+    let shards = vec![(0u64, DbShard::One), (1u64, DbShard::Two)].into_iter();
     println!("debug: shard_info: {shards:#?}");
     let mut optimizer = Optimizer::new(statement, shards);
 
@@ -71,7 +72,7 @@ impl ControlService {
         // Step2. Refactoring queries and getting distributed query sql.
         let (rewrite_sqls, join_operator, order_by_and_limit) = rewrite_sql(statement, shards);
         println!("Step1: rewrite sqls: {rewrite_sqls:#?}");
-        result_set.set_header(vec!["id".to_string()]);
+        result_set.set_header(vec!["name".to_string()]);
         // Step3. Execute rewrite sqls.
         let final_result = if rewrite_sqls.len() == 1 {
             let shard_sql = rewrite_sqls.get(0).unwrap().clone();
