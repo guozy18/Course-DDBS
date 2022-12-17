@@ -205,8 +205,16 @@ pub fn do_join(left: Vec<u8>, right: Vec<u8>, join_operator: Option<JoinOperator
 }
 
 pub fn do_order_by_and_limit(
-    results: Vec<u8>,
-    join_operator: Option<(Vec<OrderByExpr>, Option<Expr>)>,
-) -> Vec<u8> {
-    unimplemented!()
+    results: Vec<Vec<mysql::Value>>,
+    order_by_and_limit: Option<(Vec<OrderByExpr>, Option<Expr>)>,
+) -> Vec<Vec<mysql::Value>> {
+    if let Some((_order_by, Some(limit))) = order_by_and_limit {
+        let return_number = match limit {
+            Expr::Value(Value::Number(number, _)) => number.parse::<usize>().unwrap(),
+            _ => results.len(),
+        };
+        results[0..return_number].to_vec()
+    } else {
+        results
+    }
 }

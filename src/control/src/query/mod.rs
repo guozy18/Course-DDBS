@@ -92,38 +92,11 @@ impl ControlService {
             let results = futures::future::join_all(futs).await;
 
             let mut final_results = Vec::<u8>::new();
-            for result in results {
+            for (server_id, result) in results.into_iter().enumerate() {
+                println!("debug: in {server_id:#?}, get result: {result:#?}");
                 final_results.append(&mut result?);
             }
 
-            let tmp = final_results.clone();
-
-            println!("debug: tmp\n {tmp:?}");
-            let s = Reader::get_root(tmp.as_slice()).unwrap();
-            let rows = Vec::<MyRow>::deserialize(s)?;
-            // let mut row = MyRow::deserialize(s)?;
-            // let _date: MyDate = row
-            //     .get_mut(0)
-            //     .ok_or_else(|| {
-            //         RuntimeError::DBTypeParseError(
-            //             "cannot get index 0 for DISTINCT popularDate".to_owned(),
-            //         )
-            //     })?
-            //     .take()
-            //     .unwrap()
-            //     .try_into()?;
-            println!("debug: rows \n {rows:#?}");
-            let header = &result_set.header;
-            let x = rows
-                .iter()
-                .map(|row| parse_row(row, header))
-                .collect::<Vec<_>>();
-
-            result_set.table = x;
-
-            println!("debug: result_set \n {result_set:#?}");
-
-            // dates.insert(date);
             final_results
         } else if rewrite_sqls.len() == 2 {
             // Query to get the data of the left branch of join
@@ -180,7 +153,23 @@ impl ControlService {
         // if let Some((order_by, limit))  = order_by_and_limit {
         //     do_order_by_and limit
         // }
-        let _final_result = do_order_by_and_limit(final_result, order_by_and_limit);
+        // let final_result = do_order_by_and_limit(final_result, order_by_and_limit);
+
+        println!("debug: tmp\n {final_result:?}");
+        let s = Reader::get_root(final_result.as_slice()).unwrap();
+        let rows = Vec::<MyRow>::deserialize(s)?;
+        println!("debug: rows \n {rows:#?}");
+        let header = &result_set.header;
+        let vec_value = rows
+            .iter()
+            .map(|row| parse_row(row, header))
+            .collect::<Vec<_>>();
+
+        println!("debug: defore order_by and limit \n {final_result:#?}");
+        let final_result = do_order_by_and_limit(vec_value, order_by_and_limit);
+        println!("debug: result_set \n {final_result:#?}");
+        result_set.table = final_result;
+        println!("debug: after order_by and limit: result_set \n {result_set:#?}");
 
         // collect the result of the two query to get the final result.
         // execute join operate
