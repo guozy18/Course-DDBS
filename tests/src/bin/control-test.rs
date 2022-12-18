@@ -1,7 +1,7 @@
 use anyhow::Result as AnyResult;
 use common::TemporalGranularity;
 use db_tests::ControlClient;
-use mysql::{prelude::Queryable, LocalInfileHandler, Pool};
+use mysql::{prelude::Queryable, LocalInfileHandler};
 use protos::{DbStatus, ListServerStatusResponse};
 use std::collections::HashSet;
 use std::fs;
@@ -22,17 +22,37 @@ pub async fn main() -> AnyResult<()> {
     let ep = Channel::builder(format_url(address).parse::<Uri>().unwrap());
     let mut control_client = ControlClient::new(ep).await?;
 
-    let pool = Pool::new("mysql://root:mysql1@mysql1/test")?;
-    let mut conn = pool.get_conn()?;
+    let mut db_conns = (1..=2)
+        .map(|id| {
+            mysql::Conn::new(format!("mysql://root:mysql{id}@mysql{id}/test").as_str())
+                .expect("cannot connect to mysql")
+        })
+        .collect::<Vec<_>>();
+    // some helper functions
+    fn get_golden_conn(db_conns: &mut [mysql::Conn]) -> &mut mysql::Conn {
+        &mut db_conns[0]
+    }
+    fn get_my_rank_conn(
+        db_conns: &mut [mysql::Conn],
+        granularity: TemporalGranularity,
+    ) -> &mut mysql::Conn {
+        if granularity == TemporalGranularity::Daily {
+            &mut db_conns[0]
+        } else {
+            &mut db_conns[1]
+        }
+    }
 
-    let local_infile_handler = Some(LocalInfileHandler::new(|file_name, writer| {
-        let file_name_str = String::from_utf8_lossy(file_name).to_string();
-        let file_content = fs::read_to_string(file_name_str.as_str())?;
-        writer.write_all(file_content.as_bytes())
-    }));
-    conn.set_local_infile_handler(local_infile_handler);
-    conn.query_drop(
-        "
+    {
+        let golden_conn = get_golden_conn(&mut db_conns);
+        let local_infile_handler = Some(LocalInfileHandler::new(|file_name, writer| {
+            let file_name_str = String::from_utf8_lossy(file_name).to_string();
+            let file_content = fs::read_to_string(file_name_str.as_str())?;
+            writer.write_all(file_content.as_bytes())
+        }));
+        golden_conn.set_local_infile_handler(local_infile_handler);
+        golden_conn.query_drop(
+            "
     DROP TABLE IF EXISTS `user_read_test`;
         CREATE TABLE `user_read_test` (
         `timestamp` char(14) DEFAULT NULL,
@@ -45,24 +65,24 @@ pub async fn main() -> AnyResult<()> {
         `shareOrNot` char(2) DEFAULT NULL,
         `commentDetail` char(100) DEFAULT NULL
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8;",
-    )?;
+        )?;
 
-    println!("start init user_read_test table with full tuples...");
-    conn.query_drop(
+        println!("start init user_read_test table with full tuples...");
+        golden_conn.query_drop(
         "
         LOAD DATA LOCAL INFILE '/root/Course-DDBS/sql-data/user_read_shard1.sql' INTO TABLE user_read_test
         FIELDS TERMINATED BY '|'
         LINES TERMINATED BY '\\n' "
     )?;
-    conn.query_drop(
+        golden_conn.query_drop(
         "
         LOAD DATA LOCAL INFILE '/root/Course-DDBS/sql-data/user_read_shard2.sql' INTO TABLE user_read_test
         FIELDS TERMINATED BY '|'
         LINES TERMINATED BY '\\n' "
     )?;
 
-    println!("init user_read_test table with full tuples succeed!");
-
+        println!("init user_read_test table with full tuples succeed!");
+    }
     // test ping
     control_client.ping().await?;
     println!("ping control success");
@@ -97,8 +117,8 @@ pub async fn main() -> AnyResult<()> {
     println!("generate be read table elapsed: {:?}", start.elapsed());
 
     for granularity in [
-        // TemporalGranularity::Monthly,
-        // TemporalGranularity::Weekly,
+        TemporalGranularity::Monthly,
+        TemporalGranularity::Weekly,
         TemporalGranularity::Daily,
     ] {
         let start = Instant::now();
@@ -121,11 +141,11 @@ pub async fn main() -> AnyResult<()> {
             WINDOW myw AS (PARTITION BY popularDate ORDER BY readNum DESC)) AS temp WHERE n<={} GROUP BY popularDate",
         granularity.to_column_sql("timestamp"),
         granularity.top_num());
-        conn.query_drop(sql)?;
+        get_golden_conn(&mut db_conns).query_drop(sql)?;
         println!("generate golden truth {granularity} popular_rank table succeed!");
 
         // compare our results with golden truth
-        let rows: Vec<(String, String)> = conn.exec(
+        let rows: Vec<(String, String)> = get_my_rank_conn(&mut db_conns, granularity).exec(
             format!(
                 r#"SELECT popularDate,articleAidList FROM popular_rank
                 WHERE temporalGranularity="{}""#,
@@ -135,7 +155,7 @@ pub async fn main() -> AnyResult<()> {
         )?;
         println!("start check popular_rank table of {granularity}...");
         for (date, list) in rows {
-            let target_list: Option<String> = conn.exec_first(
+            let target_list: Option<String> = get_golden_conn(&mut db_conns).exec_first(
                 format!(
                     r#"
             SELECT aidList FROM popular_rank_test WHERE popularDate="{}""#,
@@ -155,7 +175,7 @@ pub async fn main() -> AnyResult<()> {
             assert!(my_aid.is_subset(&target_aid));
         }
         println!("check popular_rank table of {granularity} succeed!");
-        conn.query_drop("DROP TABLE `popular_rank_test`")?;
+        get_golden_conn(&mut db_conns).query_drop("DROP TABLE `popular_rank_test`")?;
     }
 
     Ok(())

@@ -4,7 +4,6 @@ pub mod opts;
 
 use clap::Parser;
 use commands::handle_commands;
-use mysql::Pool;
 use opts::Opts;
 
 use common::{Result, RuntimeError};
@@ -23,9 +22,9 @@ pub struct Repl {
     editor: Editor<()>,
     prompt: String,
     control_client: ControlServerClient<Channel>,
+    #[allow(unused)]
     store_client: Vec<DbServerClient<Channel>>,
     history_file: PathBuf,
-    conn_pool: Pool,
 }
 
 impl Repl {
@@ -59,7 +58,6 @@ impl Repl {
         let history_file = Self::get_history_file();
         let _ = editor.load_history(&history_file).is_ok();
 
-        let conn_pool = Pool::new("mysql://root:mysql1@mysql1/test")?;
 
         Ok(Repl {
             editor,
@@ -67,7 +65,6 @@ impl Repl {
             control_client,
             store_client,
             history_file,
-            conn_pool,
         })
     }
 
