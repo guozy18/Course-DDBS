@@ -3,12 +3,7 @@ pub use clap::Parser;
 /// REPL command line options
 #[derive(Parser, Debug)]
 pub struct Opts {
-    #[clap(
-        short,
-        long,
-        default_value = "localhost:27022",
-        value_name = "host:port"
-    )]
+    #[clap(short, long, default_value = "control:27022", value_name = "host:port")]
     pub control_server: String,
     #[clap(short, long, default_value = "server1:27023", value_name = "host:port")]
     pub store_server: Vec<String>,

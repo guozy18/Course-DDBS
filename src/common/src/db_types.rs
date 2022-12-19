@@ -29,7 +29,7 @@ impl ValueAdaptor {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MyRow(Vec<Option<ValueAdaptor>>);
 
 impl Deref for MyRow {

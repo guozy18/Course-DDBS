@@ -146,7 +146,6 @@ impl CommandHandler for LoadMonthlyPopularTableHandler {
     }
 }
 
-
 pub struct LoadWeeklyPopularTableHandler;
 
 #[async_trait]
@@ -171,7 +170,6 @@ impl CommandHandler for LoadWeeklyPopularTableHandler {
         Ok(())
     }
 }
-
 
 /// LoadPopularTable
 pub struct LoadDailyPopularTableHandler;
