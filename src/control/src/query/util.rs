@@ -5,8 +5,6 @@ use std::collections::HashMap;
 use common::{
     get_join_condition, get_shards_info, join_shard_info, DataShard, MyRow, Result, SymbolTable,
 };
-use flexbuffers::Reader;
-use serde::Deserialize;
 use sqlparser::ast::{
     BinaryOperator, Expr, Ident, Join, JoinOperator, ObjectName, OrderByExpr, SelectItem,
     TableAlias, TableFactor, TableWithJoins, Value,
@@ -281,17 +279,13 @@ pub fn get_wild_projection() -> Vec<SelectItem> {
 }
 
 pub fn do_join(
-    left: Vec<u8>,
-    right: Vec<u8>,
+    mut left_rows: Vec<MyRow>,
+    mut right_rows: Vec<MyRow>,
     join_operator: Option<JoinOperator>,
 ) -> Result<Vec<MyRow>> {
     let mut final_ans = vec![];
     if let Some(_join_condition) = join_operator {
-        if !left.is_empty() && !right.is_empty() {
-            let left = Reader::get_root(left.as_slice()).unwrap();
-            let left_rows = Vec::<MyRow>::deserialize(left)?;
-            let right = Reader::get_root(right.as_slice()).unwrap();
-            let right_rows = Vec::<MyRow>::deserialize(right)?;
+        if !left_rows.is_empty() && !right_rows.is_empty() {
             for mut left_row in left_rows {
                 for right_row in right_rows.clone() {
                     left_row.append(&mut right_row.clone());
@@ -302,14 +296,10 @@ pub fn do_join(
             final_ans = vec![];
         }
     } else {
-        if !left.is_empty() {
-            let left = Reader::get_root(left.as_slice()).unwrap();
-            let mut left_rows = Vec::<MyRow>::deserialize(left)?;
+        if !left_rows.is_empty() {
             final_ans.append(&mut left_rows);
         }
-        if !right.is_empty() {
-            let right = Reader::get_root(right.as_slice()).unwrap();
-            let mut right_rows = Vec::<MyRow>::deserialize(right)?;
+        if !right_rows.is_empty() {
             final_ans.append(&mut right_rows);
         }
     }
