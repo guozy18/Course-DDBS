@@ -30,15 +30,15 @@ pub fn get_shards_info() -> HashMap<i32, Vec<Expr>> {
         quote_style: Some('"'),
     }));
     let hongkong_expr = Box::new(Expr::Identifier(Ident {
-        value: "HongKong".to_string(),
+        value: "Hong Kong".to_string(),
         quote_style: Some('"'),
     }));
     // let science_expr = Box::new(Expr::Identifier(Ident {
-    //     value: "HongKong".to_string(),
+    //     value: "Hong Kong".to_string(),
     //     quote_style: None,
     // }));
     // let _expr = Box::new(Expr::Identifier(Ident {
-    //     value: "HongKong".to_string(),
+    //     value: "Hong Kong".to_string(),
     //     quote_style: None,
     // }));
 

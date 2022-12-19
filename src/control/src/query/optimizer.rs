@@ -182,8 +182,8 @@ mod test_optimize {
         let query = query.to_string();
         // "SELECT name, gender FROM user WHERE id < 100 AND region = \"Beijing\"".to_string();
         // "SELECT name, gender FROM user WHERE region = \"Beijing\" AND region = \"Beijing\"".to_string();
-        // "SELECT name, gender FROM user WHERE region = \"HongKong\" AND region = \"HongKong\"".to_string();
-        // "SELECT name, gender FROM user WHERE region = \"HongKong\" AND region = \"Beijing\"".to_string();
+        // "SELECT name, gender FROM user WHERE region = \"Hong Kong\" AND region = \"Hong Kong\"".to_string();
+        // "SELECT name, gender FROM user WHERE region = \"Hong Kong\" AND region = \"Beijing\"".to_string();
         let shards = vec![(0, DbShard::One), (1, DbShard::Two)];
         Optimizer::new(query, shards.into_iter())
     }
@@ -204,14 +204,14 @@ mod test_optimize {
             //     ORDER BY b.timestamp DESC
             //     LIMIT 5",
             // "SELECT name, gender FROM user WHERE region = \"Beijing\"",
-            // "SELECT name, gender FROM user WHERE region = \"HongKong\" AND region = \"HongKong\"",
+            // "SELECT name, gender FROM user WHERE region = \"Hong Kong\" AND region = \"Hong Kong\"",
             // "SELECT name, gender FROM user WHERE id < 100 AND region = \"Beijing\"",
-            "SELECT name, gender FROM user WHERE region = \"HongKong\" AND region = \"Beijing\"",
+            "SELECT name, gender FROM user WHERE region = \"Hong Kong\" AND region = \"Beijing\"",
             "SELECT name, gender FROM user limit 5",
             "INSERT INTO user VALUES (1000000006,'u0','0','test','male','emailtest','phonetest','depttest',
                'gradetest','zh','Beijing','role1','tages10','15');",
             "INSERT INTO user VALUES (1000000006,'u0','0','test','male','emailtest','phonetest','depttest',
-               'gradetest','zh','HongKong','role1','tages10','15');",
+               'gradetest','zh','Hong Kong','role1','tages10','15');",
             "UPDATE user  SET alexa='5000', country='USA'  WHERE name='u1';",
         ];
         for test_sql in test_sqls {
@@ -246,9 +246,9 @@ mod test_optimize {
                 ORDER BY b.timestamp DESC
                 LIMIT 5",
             "SELECT name, gender FROM user WHERE region = \"Beijing\"",
-            "SELECT name, gender FROM user WHERE region = \"HongKong\" AND region = \"HongKong\"",
+            "SELECT name, gender FROM user WHERE region = \"Hong Kong\" AND region = \"Hong Kong\"",
             "SELECT name, gender FROM user WHERE id < 100 AND region = \"Beijing\"",
-            "SELECT name, gender FROM user WHERE region = \"HongKong\" AND region = \"Beijing\"",
+            "SELECT name, gender FROM user WHERE region = \"Hong Kong\" AND region = \"Beijing\"",
             "SELECT name, gender FROM user limit 5",
             "SELECT name FROM user limit 5",
             "SELECT * FROM user,article limit 5",
