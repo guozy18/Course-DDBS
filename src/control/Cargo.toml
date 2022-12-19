@@ -10,7 +10,7 @@ protos = { path = "../protos" }
 async-trait = "0.1.51"
 tonic = "0.8"
 mysql = "23.0.0"
-tokio = "1.11"
+tokio = { version = "1.11", features = ["full"] }
 tracing = "0.1.33"
 futures = "0.3.15"
 sqlparser = "0.27"

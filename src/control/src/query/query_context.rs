@@ -4,8 +4,8 @@ use std::vec;
 use common::{DataShard, ServerId, SymbolTable};
 
 use sqlparser::ast::{
-    Expr, Join, JoinOperator, OrderByExpr, Query, Select, SelectItem, SetExpr, Statement,
-    TableFactor, TableWithJoins, Value,
+    Expr, Ident, Join, JoinOperator, ObjectName, OrderByExpr, Query, Select, SelectItem, SetExpr,
+    Statement, TableFactor, TableWithJoins, Value,
 };
 use sqlparser::dialect::{Dialect, GenericDialect};
 
@@ -55,6 +55,43 @@ impl QueryContext {
         let statement = self.ast.get(0).unwrap().clone();
         match statement {
             Statement::Query(query) => Some(*query),
+            _ => None,
+        }
+    }
+
+    pub fn is_insert(&self) -> Option<ServerId> {
+        if self.ast.len() != 1 {
+            return None;
+        }
+        let statement = self.ast.get(0).unwrap().clone();
+        match statement {
+            Statement::Insert {
+                table_name, source, ..
+            } => {
+                let Query { body, .. } = *source;
+                let body = *body;
+                if let SetExpr::Values(values) = body {
+                    if table_name
+                        == ObjectName(vec![Ident {
+                            value: "user".to_string(),
+                            quote_style: None,
+                        }])
+                    {
+                        if let Some(x) = values.0.get(0).unwrap().get(10) {
+                            if x.eq(&Expr::Value(Value::SingleQuotedString(
+                                "Beijing".to_string(),
+                            ))) {
+                                return Some(0);
+                            } else {
+                                return Some(1);
+                            }
+                        } else {
+                            return None;
+                        }
+                    }
+                }
+                None
+            }
             _ => None,
         }
     }

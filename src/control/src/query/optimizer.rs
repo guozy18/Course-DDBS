@@ -61,6 +61,18 @@ impl Optimizer {
             }
 
             join_operator
+        } else if let Some(server_id) = self.ctx.is_insert() {
+            let mut shard_sql = HashMap::new();
+            // not query, directly forward to all shards.
+            for (server_iter, _) in self.shards.iter() {
+                if *server_iter == server_id {
+                    shard_sql.insert(server_id, Some(self.query.clone()));
+                } else {
+                    shard_sql.insert(*server_iter, None);
+                }
+            }
+            rewrite_sql.push(shard_sql);
+            None
         } else {
             let mut shard_sql = HashMap::new();
             // not query, directly forward to all shards.
@@ -196,6 +208,11 @@ mod test_optimize {
             // "SELECT name, gender FROM user WHERE id < 100 AND region = \"Beijing\"",
             "SELECT name, gender FROM user WHERE region = \"HongKong\" AND region = \"Beijing\"",
             "SELECT name, gender FROM user limit 5",
+            "INSERT INTO user VALUES (1000000006,'u0','0','test','male','emailtest','phonetest','depttest',
+               'gradetest','zh','Beijing','role1','tages10','15');",
+            "INSERT INTO user VALUES (1000000006,'u0','0','test','male','emailtest','phonetest','depttest',
+               'gradetest','zh','HongKong','role1','tages10','15');",
+            "UPDATE user  SET alexa='5000', country='USA'  WHERE name='u1';",
         ];
         for test_sql in test_sqls {
             println!("Origin sql: \n{test_sql:#}\n");
@@ -286,6 +303,30 @@ mod test {
         println!("{res:#?}");
 
         let res = Parser::parse_sql(&dialect, "SELECT name, gender FROM User, Article").unwrap();
+        println!("{res:#?}");
+
+        let x = res[0].clone();
+        let sql = x.to_string();
+        println!("{sql}");
+    }
+
+    #[test]
+    fn test_insert() {
+        let dialect = GenericDialect {};
+
+        let res = Parser::parse_sql(
+            &dialect,
+            "INSERT INTO user VALUES (1000000006,'u0','0','test','male','emailtest','phonetest','depttest',
+               'gradetest','zh','Beijing','role1','tages10','15');",
+        )
+        .unwrap();
+        println!("{res:#?}");
+
+        let res = Parser::parse_sql(
+            &dialect,
+            "UPDATE user  SET alexa='5000', country='USA'  WHERE name='u1';",
+        )
+        .unwrap();
         println!("{res:#?}");
 
         let x = res[0].clone();
