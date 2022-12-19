@@ -353,7 +353,10 @@ impl ControlService {
             batch_idx += 1;
             let mut popular_articles = bytes_to_popular_article_vec(bytes?)?;
             // update the cursor *before the deduplicate*
-            curr_read_num[site - 1] = popular_articles.last().expect("no articles returned").read_num;
+            curr_read_num[site - 1] = popular_articles
+                .last()
+                .expect("no articles returned")
+                .read_num;
             // deduplicate aid
             popular_articles.retain(|article| top_k.iter().all(|a| a.aid != article.aid));
             if popular_articles.is_empty() {

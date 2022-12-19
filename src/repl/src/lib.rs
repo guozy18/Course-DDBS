@@ -7,7 +7,7 @@ use commands::handle_commands;
 use opts::Opts;
 
 use common::{Result, RuntimeError};
-use std::{path::PathBuf, time::Duration};
+use std::path::PathBuf;
 
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
@@ -90,17 +90,14 @@ impl Repl {
                         println!("Error on parsing the input command.");
                     }
                 } else {
+                    println!("[Exec query]: {statement}");
                     let timer = std::time::Instant::now();
-                    std::thread::sleep(Duration::from_millis(1));
-                    println!("Test[Exec query]: {statement}");
-
                     let result = self
                         .control_client
                         .exec(ExecRequest {
                             statement: statement.to_string(),
                         })
                         .await;
-
                     let total_time = timer.elapsed();
 
                     match result {
@@ -119,7 +116,7 @@ impl Repl {
                         Err(status) => println!("{status}"),
                     };
 
-                    println!("Query time: {:.2} ms", total_time.as_secs_f64() * 1000.0);
+                    println!("Total time: {:.2} ms", total_time.as_secs_f64() * 1000.0);
                 }
                 self.editor.add_history_entry(statement);
             }

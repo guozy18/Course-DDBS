@@ -17,7 +17,7 @@ pub struct Profile {
 /// A profiler that measures the performance of stages during query.
 #[derive(Debug)]
 pub struct Profiler {
-    profile: Profile,
+    pub profile: Profile,
     start_time: Instant,
     last_time: Instant,
 }

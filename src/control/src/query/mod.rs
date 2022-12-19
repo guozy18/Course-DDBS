@@ -9,10 +9,10 @@ use tracing::debug;
 pub use util::*;
 
 use crate::ControlService;
-use common::{ExecuteResult, MyRow, Profile, Result, ResultSet, ServerId, StatusResult};
+use common::{ExecuteResult, MyRow, Profiler, Result, ResultSet, ServerId, StatusResult};
 use mysql::Value;
 use optimizer::Optimizer;
-use protos::{DbServerMeta, DbShard, ExecRequest};
+use protos::{DbServerMeta, DbStatus, ExecRequest};
 use serde::Deserialize;
 use sqlparser::ast::{Expr, JoinOperator, OrderByExpr};
 
@@ -21,25 +21,28 @@ type OrderByAndLimit = Option<(Vec<OrderByExpr>, Option<Expr>)>;
 
 fn rewrite_sql(
     statement: String,
-    _shards_info: HashMap<ServerId, DbServerMeta>,
+    shards_info: HashMap<ServerId, DbServerMeta>,
+    profiler: &mut Profiler,
 ) -> (
     RewriteSqls,
     Vec<String>,
     Option<JoinOperator>,
     OrderByAndLimit,
 ) {
-    // let shards = shards_info
-    //     .into_iter()
-    //     .filter_map(|(server_id, server_meta)| {
-    //         if server_meta.status() == DbStatus::Alive && server_meta.shard.is_some() {
-    //             Some((server_id, server_meta.shard()))
-    //         } else {
-    //             None
-    //         }
-    //     });
-    let shards = vec![(0u64, DbShard::One), (1u64, DbShard::Two)].into_iter();
-    debug!("debug: shard_info: {shards:#?}");
+    let shards = shards_info
+        .into_iter()
+        .filter_map(|(server_id, server_meta)| {
+            if server_meta.status() == DbStatus::Alive && server_meta.shard.is_some() {
+                Some((server_id, server_meta.shard()))
+            } else {
+                None
+            }
+        });
+    debug!("debug: shards: {shards:#?}");
+
+    profiler.reset_last();
     let mut optimizer = Optimizer::new(statement, shards);
+    profiler.parse_finished();
 
     // 1. parser sql query and fill context
     optimizer.parse();
@@ -49,7 +52,9 @@ fn rewrite_sql(
     let header = optimizer.extract_header();
 
     let (rewrite_sql, join_operator) = optimizer.rewrite();
+    profiler.rewrite_finished();
     debug!("debug: rewrite sql{rewrite_sql:#?}");
+
     let mut final_sql = Vec::new();
     for single_rewrite_sql in rewrite_sql {
         final_sql.push(
@@ -75,16 +80,19 @@ impl ControlService {
         // Step1. get the sql query string and get the shards information.
         let ExecRequest { statement } = req;
         let mut result_set = ResultSet::new();
+        let mut exec_profile = Profiler::default();
+
         let shards = self.inner.db_server_meta.read().unwrap().clone();
         // Step2. Refactoring queries and getting distributed query sql.
         let (rewrite_sqls, header, join_operator, order_by_and_limit) =
-            rewrite_sql(statement, shards);
+            rewrite_sql(statement, shards, &mut exec_profile);
         debug!("Step1: rewrite sqls: {rewrite_sqls:#?}");
         debug!("Step1: get query header: {header:#?}");
         result_set.set_header(header);
         // Step3. Execute rewrite sqls.
         let final_result = if rewrite_sqls.len() == 1 {
             let shard_sql = rewrite_sqls.get(0).unwrap().clone();
+            exec_profile.reset_last();
             let futs = shard_sql
                 .into_iter()
                 .map(|(server_id, sql)| {
@@ -99,6 +107,7 @@ impl ControlService {
                 })
                 .collect::<Vec<_>>();
             let results = futures::future::join_all(futs).await;
+            exec_profile.exec_finished();
 
             // let mut final_results = Vec::<u8>::new();
             let mut final_results = Vec::<MyRow>::new();
@@ -115,6 +124,7 @@ impl ControlService {
         } else if rewrite_sqls.len() == 2 {
             // Query to get the data of the left branch of join
             let left_shard_sql = rewrite_sqls.get(0).unwrap().clone();
+            exec_profile.reset_last();
             let left_futs = left_shard_sql
                 .into_iter()
                 .map(|(server_id, sql)| {
@@ -154,6 +164,7 @@ impl ControlService {
                 })
                 .collect::<Vec<_>>();
             let right_results = futures::future::join_all(right_futs).await;
+            exec_profile.exec_finished();
 
             let mut final_right_results = Vec::<MyRow>::new();
             for right_result in right_results {
@@ -193,7 +204,7 @@ impl ControlService {
         // execute join operate
         let final_result = serde_json::json!(ExecuteResult {
             result_set: Some(result_set),
-            profile: Profile::default(),
+            profile: exec_profile.profile,
         })
         .to_string();
 
