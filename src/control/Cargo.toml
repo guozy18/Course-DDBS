@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+aux_macro = { path = "../aux-macro" }
 common = { path = "../common" }
 protos = { path = "../protos" }
 async-trait = "0.1.51"

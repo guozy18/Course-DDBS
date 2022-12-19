@@ -163,6 +163,7 @@ impl ControlService {
 }
 
 impl ControlService {
+    #[aux_macro::elapsed]
     // The second complex opeartion to support is to generate the popular_table
     pub async fn generate_popular_table(&self, granularity: TemporalGranularity) -> Result<()> {
         // first to check init state
@@ -340,6 +341,9 @@ impl ControlService {
         let mut curr_read_num = [u64::MAX >> 1, u64::MAX >> 1];
         let mut batch_idx = 0;
         while let Some((site, bytes)) = stream.next().await {
+            if let Ok(bytes) = &bytes {
+                trace!("byte length of batch res = {}", bytes.len());
+            }
             // early stop
             if top_k.len() == k
                 && top_k.peek().unwrap().read_num >= (curr_read_num[0] + curr_read_num[1])
@@ -348,11 +352,14 @@ impl ControlService {
             }
             batch_idx += 1;
             let mut popular_articles = bytes_to_popular_article_vec(bytes?)?;
-            popular_articles.retain(|article| top_k.iter().all(|a| a.aid != article.aid));
-            let aids = join(popular_articles.iter().map(|a| &a.aid), ",");
-            // update the cursor
-            curr_read_num[site - 1] = popular_articles.last().unwrap().read_num;
+            // update the cursor *before the deduplicate*
+            curr_read_num[site - 1] = popular_articles.last().expect("no articles returned").read_num;
             // deduplicate aid
+            popular_articles.retain(|article| top_k.iter().all(|a| a.aid != article.aid));
+            if popular_articles.is_empty() {
+                continue;
+            }
+            let aids = join(popular_articles.iter().map(|a| &a.aid), ",");
             // try to get the entry of same aid in the other site
             let other_site = if site == 1 { &mut dbms2 } else { &mut dbms1 };
             let bytes = other_site

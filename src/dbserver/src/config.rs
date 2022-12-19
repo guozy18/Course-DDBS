@@ -36,7 +36,7 @@ pub static CREATE_TABLE_SQLS: [&str; 3] = [
         `authors` char(13) DEFAULT NULL,
         `language` char(3) DEFAULT NULL,
         `text` char(31) DEFAULT NULL,
-        `image` char(32) DEFAULT NULL,
+        `image` char(60) DEFAULT NULL,
         `video` char(32) DEFAULT NULL
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8;",
     "
