@@ -9,7 +9,7 @@ common = { path = "../common" }
 protos = { path = "../protos" }
 async-trait = "0.1.51"
 mysql = "23.0.0"
-tonic = "0.6.2"
+tonic = "0.8"
 tokio = "1.11"
 tracing = "0.1.33"
 toml = "0.5"

@@ -11,6 +11,10 @@ import "dbserver.proto";
 
 
 /* ----- Request RELEATED DEFINITION ----- */
+/* ----- Request RELEATED to Web Front ----- */
+message GetArticleTextRequest {
+    uint64 aid = 1;
+}
 
 /* ----- Request RELEATED to DB Server ----- */
 message ServerRegisterRequest {
@@ -68,4 +72,6 @@ service ControlServer {
     rpc Exec(ExecRequest) returns (ExecResponse);
 
     rpc GeneratePopularTable(google.protobuf.Int32Value) returns (google.protobuf.Empty);
+
+    rpc GetArticle(GetArticleTextRequest) returns (google.protobuf.StringValue);
 }

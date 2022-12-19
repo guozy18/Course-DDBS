@@ -22,8 +22,8 @@ pub fn reslove_table_factor(relation: TableFactor) -> Option<(String, Option<Str
 pub fn get_table_info() -> HashMap<String, Vec<String>> {
     let mut table_info = HashMap::new();
     let user_prop = vec![
-        "id".to_string(),
         "timestamp".to_string(),
+        "id".to_string(),
         "uid".to_string(),
         "name".to_string(),
         "gender".to_string(),
@@ -40,8 +40,8 @@ pub fn get_table_info() -> HashMap<String, Vec<String>> {
     table_info.insert("user".to_string(), user_prop);
 
     let article_prop = vec![
-        "id".to_string(),
         "timestamp".to_string(),
+        "id".to_string(),
         "aid".to_string(),
         "title".to_string(),
         "category".to_string(),
@@ -56,21 +56,20 @@ pub fn get_table_info() -> HashMap<String, Vec<String>> {
     table_info.insert("article".to_string(), article_prop);
 
     let read_prop = vec![
-        "id".to_string(),
         "timestamp".to_string(),
+        "id".to_string(),
         "uid".to_string(),
         "aid".to_string(),
         "readTimeLength".to_string(),
         "aggreeOrNot".to_string(),
         "commentOrNot".to_string(),
-        "commentDetail".to_string(),
         "shareOrNot".to_string(),
+        "commentDetail".to_string(),
     ];
     table_info.insert("user_read".to_string(), read_prop);
 
     let be_read_prop = vec![
         "id".to_string(),
-        "timestamp".to_string(),
         "aid".to_string(),
         "readNum".to_string(),
         "readUidList".to_string(),
@@ -85,7 +84,7 @@ pub fn get_table_info() -> HashMap<String, Vec<String>> {
 
     let popular_rank_prop = vec![
         "id".to_string(),
-        "timestamp".to_string(),
+        "popularDate".to_string(),
         "temporalGranularity".to_string(),
         "articleAidList".to_string(),
     ];

@@ -63,14 +63,14 @@ pub static STORE_PROCEDURE:[&str;1] = ["
                 INSERT INTO be_read (aid, readNum, readUidList, commentNum, commentUidList, agreeNum, agreeUidList, shareNum, shareUidList)
                 VALUES (aid, i_readNum, i_readUidList, i_commentNum, i_commentUidList, i_agreeNum, i_agreeUidList, i_shareNum, i_shareUidList)
                 ON DUPLICATE KEY UPDATE
-                    readNum = VALUES(readNum) + i_readNum,
-                    readUidList = CONCAT_WS(',', VALUES(readUidList), i_readUidList),
-                    commentNum = VALUES(commentNum) + i_commentNum,
-                    commentUidList = CONCAT_WS(',', VALUES(commentUidList), i_commentUidList),
-                    agreeNum = VALUES(agreeNum) + i_agreeNum,
-                    agreeUidList = CONCAT_WS(',', VALUES(agreeUidList), i_agreeUidList),
-                    shareNum = VALUES(shareNum) + i_shareNum,
-                    shareUidList = CONCAT_WS(',', VALUES(shareUidList), i_shareUidList);
+                    readNum = readNum + i_readNum,
+                    readUidList = CONCAT_WS(',', readUidList, i_readUidList),
+                    commentNum = commentNum + i_commentNum,
+                    commentUidList = CONCAT_WS(',', commentUidList, i_commentUidList),
+                    agreeNum = agreeNum + i_agreeNum,
+                    agreeUidList = CONCAT_WS(',', agreeUidList, i_agreeUidList),
+                    shareNum = shareNum + i_shareNum,
+                    shareUidList = CONCAT_WS(',', shareUidList, i_shareUidList);
             END;
         END IF;
     END

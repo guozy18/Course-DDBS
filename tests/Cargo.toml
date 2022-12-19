@@ -14,7 +14,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.8"
 tokio = { version = "1.11", features = ["fs"] }
-tonic = { version = "0.6", features = ["tls"] }
+tonic = { version = "0.8", features = ["tls"] }
 eyre = "0.6.5"
 futures = "0.3.14"
 tracing = "0.1.33"

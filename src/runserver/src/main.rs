@@ -1,6 +1,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use crossterm::style::Stylize;
+use http::{header::HeaderName, Method};
 use std::fmt::Debug;
 use std::net::ToSocketAddrs;
 use std::time::SystemTime;
@@ -8,6 +9,7 @@ use time::{macros::format_description, OffsetDateTime};
 use tokio::net::TcpListener;
 use tokio_stream::wrappers::TcpListenerStream;
 use tonic::transport::{Server as TonicServer, Uri};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tracing::{subscriber::Subscriber, Event};
 use tracing_log::NormalizeEvent;
 use tracing_subscriber::{
@@ -57,6 +59,9 @@ pub fn parse_cli_args() -> CliArgs {
     args
 }
 
+const DEFAULT_ALLOW_HEADERS: [&str; 4] =
+    ["x-grpc-web", "content-type", "x-user-agent", "grpc-timeout"];
+
 /// Runs Server.
 ///
 /// # Arguments
@@ -72,7 +77,19 @@ async fn run_server(args: CliArgs) -> Result<()> {
             let incoming_listener = TcpListenerStream::new(TcpListener::bind(addr).await?);
             let control_service = ControlService::new();
             let service = protos::control_server_server::ControlServerServer::new(control_service);
+            let cors_layer = CorsLayer::new()
+                .allow_methods([Method::GET, Method::POST])
+                .allow_origin(AllowOrigin::mirror_request())
+                .allow_headers(
+                    DEFAULT_ALLOW_HEADERS
+                        .iter()
+                        .map(|header| HeaderName::from_static(header))
+                        .collect::<Vec<_>>(),
+                );
             TonicServer::builder()
+                .accept_http1(true)
+                .layer(cors_layer)
+                .layer(tonic_web::GrpcWebLayer::new())
                 .add_service(service)
                 .serve_with_incoming(incoming_listener)
                 .await?;

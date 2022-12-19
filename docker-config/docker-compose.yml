@@ -77,6 +77,8 @@ services:
     image: server
     command: /root/Course-DDBS/target/${SERVER_MODE}/runserver control
     stop_signal: SIGKILL
+    ports:
+      - "27022:27022"
     volumes:
       - type: bind
         source: ../
@@ -125,6 +127,19 @@ services:
         target: /root/Course-DDBS
     networks:
       - ddbms-network
+  
+  miniserver:
+    image: svenstaro/miniserve
+    command: ["-p", "9999", "--header", "Access-Control-Allow-Origin: *", "/datas"]
+    ports:
+      - "9999:9999"
+    volumes:
+      - type: bind
+        source: ../sql-data/articles
+        target: /datas
+    networks:
+      - ddbms-network
+
   
   mysql-exporter:
     image: jialianghuang/mysqld-exporter:latest

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-tonic = "0.6.2"
+tonic = "0.8"
 toml = "0.5"
 mysql = "23.0.0"
 thiserror = "1.0"

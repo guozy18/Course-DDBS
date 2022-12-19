@@ -1,12 +1,13 @@
 use crate::DbClient;
 use common::{ServerId, StatusResult, TemporalGranularity};
 use protos::{
-    control_server_server::ControlServer, ExecRequest, ExecResponse, ServerRegisterRequest,
-    ServerRegisterResponse,
+    control_server_server::ControlServer, ExecRequest, ExecResponse, GetArticleTextRequest,
+    ServerRegisterRequest, ServerRegisterResponse,
 };
 use protos::{DbServerMeta, ListServerStatusResponse};
 use std::collections::HashMap;
 use std::sync::{atomic::AtomicU64, RwLock};
+use tokio::fs::read_to_string;
 use tonic::{Request, Response};
 use tracing::info;
 
@@ -87,5 +88,15 @@ impl ControlServer for ControlService {
         info!("recv generate popular table: {}", granularity);
         self.generate_popular_table(granularity).await?;
         Ok(Response::new(()))
+    }
+
+    async fn get_article(
+        &self,
+        req: Request<GetArticleTextRequest>,
+    ) -> StatusResult<Response<String>> {
+        let aid = req.into_inner().aid;
+        let path = format!("/root/Course-DDBS/sql-data/articles/article{aid}/text_a{aid}.txt");
+        let text = read_to_string(path).await?;
+        Ok(Response::new(text))
     }
 }
