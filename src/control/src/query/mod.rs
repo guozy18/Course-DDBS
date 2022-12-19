@@ -12,7 +12,7 @@ use crate::ControlService;
 use common::{ExecuteResult, MyRow, Profile, Result, ResultSet, ServerId, StatusResult};
 use mysql::Value;
 use optimizer::Optimizer;
-use protos::{DbServerMeta, DbShard, DbStatus, ExecRequest};
+use protos::{DbServerMeta, DbShard, ExecRequest};
 use serde::Deserialize;
 use sqlparser::ast::{Expr, JoinOperator, OrderByExpr};
 
@@ -21,7 +21,7 @@ type OrderByAndLimit = Option<(Vec<OrderByExpr>, Option<Expr>)>;
 
 fn rewrite_sql(
     statement: String,
-    shards_info: HashMap<ServerId, DbServerMeta>,
+    _shards_info: HashMap<ServerId, DbServerMeta>,
 ) -> (
     RewriteSqls,
     Vec<String>,
@@ -153,27 +153,40 @@ impl ControlService {
             }
 
             // Actual execution of join operation
-            do_join(final_left_results, final_right_results, join_operator)
+            // Actual execution of join operation
+            let rows = do_join(final_left_results, final_right_results, join_operator)?;
+            let header = &result_set.header;
+            let vec_value = rows
+                .iter()
+                .map(|row| parse_row(row, header))
+                .collect::<Vec<_>>();
+            let final_result = do_order_by_and_limit(vec_value, order_by_and_limit.clone());
+            result_set.table = final_result;
+            vec![]
         } else {
             unreachable!()
         };
 
         // Step 4. Filter the result by the order by and limit information.
         debug!("debug: tmp\n {final_result:?}");
-        let s = Reader::get_root(final_result.as_slice()).unwrap();
-        let rows = Vec::<MyRow>::deserialize(s)?;
-        debug!("debug: rows \n {rows:#?}");
-        let header = &result_set.header;
-        let vec_value = rows
-            .iter()
-            .map(|row| parse_row(row, header))
-            .collect::<Vec<_>>();
+        if final_result.is_empty() {
+            debug!("no answer return");
+            // result_set.table = vec![];
+        } else {
+            let s = Reader::get_root(final_result.as_slice()).unwrap();
+            let rows = Vec::<MyRow>::deserialize(s)?;
+            let header = &result_set.header;
+            let vec_value = rows
+                .iter()
+                .map(|row| parse_row(row, header))
+                .collect::<Vec<_>>();
 
-        debug!("debug: defore order_by and limit \n {final_result:#?}");
-        let final_result = do_order_by_and_limit(vec_value, order_by_and_limit);
-        debug!("debug: result_set \n {final_result:#?}");
-        result_set.table = final_result;
-        debug!("debug: after order_by and limit: result_set \n {result_set:#?}");
+            debug!("debug: defore order_by and limit \n {vec_value:#?}");
+            let final_result = do_order_by_and_limit(vec_value, order_by_and_limit);
+            debug!("debug: result_set \n {final_result:#?}");
+            result_set.table = final_result;
+            debug!("debug: after order_by and limit: result_set \n {result_set:#?}");
+        }
 
         // collect the result of the two query to get the final result.
         // execute join operate

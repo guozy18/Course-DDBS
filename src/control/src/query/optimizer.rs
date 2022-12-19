@@ -183,10 +183,10 @@ mod test_optimize {
                 where a.uid = 100
                 ORDER BY b.timestamp DESC
                 LIMIT 5",
-            // "SELECT * FROM user AS a INNER JOIN user_read AS b ON a.uid = b.uid
-            //     where a.region = \"Beijing\"
-            //     ORDER BY b.timestamp DESC
-            //     LIMIT 5",
+            "SELECT name, gender FROM user WHERE id = 100 AND region = \"Beijing\"",
+            "SELECT * FROM user AS a INNER JOIN user_read AS b ON a.uid = b.uid
+                where a.region = \"Beijing\"
+                LIMIT 5",
             // "SELECT a.title, b.readNum FROM user AS a INNER JOIN article AS b ON a.uid = b.aid
             //     where a.uid = 100
             //     ORDER BY b.timestamp DESC
@@ -194,7 +194,7 @@ mod test_optimize {
             // "SELECT name, gender FROM user WHERE region = \"Beijing\"",
             // "SELECT name, gender FROM user WHERE region = \"HongKong\" AND region = \"HongKong\"",
             // "SELECT name, gender FROM user WHERE id < 100 AND region = \"Beijing\"",
-            // "SELECT name, gender FROM user WHERE region = \"HongKong\" AND region = \"Beijing\"",
+            "SELECT name, gender FROM user WHERE region = \"HongKong\" AND region = \"Beijing\"",
             "SELECT name, gender FROM user limit 5",
         ];
         for test_sql in test_sqls {

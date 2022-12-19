@@ -58,7 +58,6 @@ impl Repl {
         let history_file = Self::get_history_file();
         let _ = editor.load_history(&history_file).is_ok();
 
-
         Ok(Repl {
             editor,
             prompt,

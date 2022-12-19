@@ -2,7 +2,11 @@
 
 use std::collections::HashMap;
 
-use common::{get_join_condition, get_shards_info, join_shard_info, DataShard, SymbolTable};
+use common::{
+    get_join_condition, get_shards_info, join_shard_info, DataShard, MyRow, Result, SymbolTable,
+};
+use flexbuffers::Reader;
+use serde::Deserialize;
 use sqlparser::ast::{
     BinaryOperator, Expr, Ident, Join, JoinOperator, ObjectName, OrderByExpr, SelectItem,
     TableAlias, TableFactor, TableWithJoins, Value,
@@ -22,8 +26,8 @@ pub fn reslove_table_factor(relation: TableFactor) -> Option<(String, Option<Str
 pub fn get_table_info() -> HashMap<String, Vec<String>> {
     let mut table_info = HashMap::new();
     let user_prop = vec![
-        "id".to_string(),
         "timestamp".to_string(),
+        "id".to_string(),
         "uid".to_string(),
         "name".to_string(),
         "gender".to_string(),
@@ -40,8 +44,8 @@ pub fn get_table_info() -> HashMap<String, Vec<String>> {
     table_info.insert("user".to_string(), user_prop);
 
     let article_prop = vec![
-        "id".to_string(),
         "timestamp".to_string(),
+        "id".to_string(),
         "aid".to_string(),
         "title".to_string(),
         "category".to_string(),
@@ -56,21 +60,20 @@ pub fn get_table_info() -> HashMap<String, Vec<String>> {
     table_info.insert("article".to_string(), article_prop);
 
     let read_prop = vec![
-        "id".to_string(),
         "timestamp".to_string(),
+        "id".to_string(),
         "uid".to_string(),
         "aid".to_string(),
         "readTimeLength".to_string(),
         "aggreeOrNot".to_string(),
         "commentOrNot".to_string(),
-        "commentDetail".to_string(),
         "shareOrNot".to_string(),
+        "commentDetail".to_string(),
     ];
     table_info.insert("user_read".to_string(), read_prop);
 
     let be_read_prop = vec![
         "id".to_string(),
-        "timestamp".to_string(),
         "aid".to_string(),
         "readNum".to_string(),
         "readUidList".to_string(),
@@ -277,8 +280,40 @@ pub fn get_wild_projection() -> Vec<SelectItem> {
     vec![SelectItem::Wildcard]
 }
 
-pub fn do_join(left: Vec<u8>, right: Vec<u8>, join_operator: Option<JoinOperator>) -> Vec<u8> {
-    unimplemented!()
+pub fn do_join(
+    left: Vec<u8>,
+    right: Vec<u8>,
+    join_operator: Option<JoinOperator>,
+) -> Result<Vec<MyRow>> {
+    let mut final_ans = vec![];
+    if let Some(_join_condition) = join_operator {
+        if !left.is_empty() && !right.is_empty() {
+            let left = Reader::get_root(left.as_slice()).unwrap();
+            let left_rows = Vec::<MyRow>::deserialize(left)?;
+            let right = Reader::get_root(right.as_slice()).unwrap();
+            let right_rows = Vec::<MyRow>::deserialize(right)?;
+            for mut left_row in left_rows {
+                for right_row in right_rows.clone() {
+                    left_row.append(&mut right_row.clone());
+                }
+                final_ans.push(left_row);
+            }
+        } else {
+            final_ans = vec![];
+        }
+    } else {
+        if !left.is_empty() {
+            let left = Reader::get_root(left.as_slice()).unwrap();
+            let mut left_rows = Vec::<MyRow>::deserialize(left)?;
+            final_ans.append(&mut left_rows);
+        }
+        if !right.is_empty() {
+            let right = Reader::get_root(right.as_slice()).unwrap();
+            let mut right_rows = Vec::<MyRow>::deserialize(right)?;
+            final_ans.append(&mut right_rows);
+        }
+    }
+    Ok(final_ans)
 }
 
 pub fn do_order_by_and_limit(
@@ -290,6 +325,7 @@ pub fn do_order_by_and_limit(
             Expr::Value(Value::Number(number, _)) => number.parse::<usize>().unwrap(),
             _ => results.len(),
         };
+        let return_number = std::cmp::min(return_number, results.len());
         results[0..return_number].to_vec()
     } else {
         results

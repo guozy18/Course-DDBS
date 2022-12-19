@@ -279,6 +279,7 @@ impl QueryContext {
     // 1. 分片，另一个分片直接取消
     pub fn reslove_selection(&self, selection: Expr) -> HashMap<i32, Expr> {
         let mut res = HashMap::new();
+        let shards_id = self.server_list.clone();
         // 1. 对于每一层selection判断其是否有很多层: 只对于有region划分功能的expr才进行划分
         if return_expr_op(&selection) {
             // 此时是Eq或者NotEq
@@ -289,8 +290,8 @@ impl QueryContext {
                     Expr::Value(Value::HexStringLiteral("placeholder".to_string())),
                 );
             } else {
-                for shard_id in [1, 2] {
-                    res.insert(shard_id, selection.clone());
+                for shard_id in shards_id {
+                    res.insert(shard_id as _, selection.clone());
                 }
             }
             res
@@ -301,9 +302,9 @@ impl QueryContext {
                     let left_result = self.reslove_selection(*left);
                     let right_result = self.reslove_selection(*right);
                     // all shard id
-                    for shard_id in [1, 2] {
-                        let left_expr = left_result.get(&shard_id);
-                        let right_expr = right_result.get(&shard_id);
+                    for shard_id in shards_id {
+                        let left_expr = left_result.get(&(shard_id as _));
+                        let right_expr = right_result.get(&(shard_id as _));
                         if let (Some(left_expr), Some(right_expr)) = (left_expr, right_expr) {
                             let placeholder =
                                 Expr::Value(Value::HexStringLiteral("placeholder".to_string()));
@@ -320,15 +321,15 @@ impl QueryContext {
                                         right: Box::new(right_expr.clone()),
                                     },
                                 };
-                            res.insert(shard_id, new_expr);
+                            res.insert(shard_id as _, new_expr);
                         }
                     }
                     res
                 }
                 _ => {
-                    for shard_id in [1, 2] {
+                    for shard_id in shards_id {
                         let new_expr = selection.clone();
-                        res.insert(shard_id, new_expr);
+                        res.insert(shard_id as _, new_expr);
                     }
                     res
                 }
