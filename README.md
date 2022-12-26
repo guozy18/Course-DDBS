@@ -116,7 +116,7 @@ docker run -it --rm --network hjl_ddbms-network -v/path/to/Course-DDBS:/root/Cou
 ```
 
 ### CLI内置命令
-包括集群初始化，动态生成be_read和popular_ran等表格
+包括集群初始化，动态生成be_read和popular_rank等表格
 ```shell
 # all the inner-command list
 [Course-DDBS]> :h
