@@ -74,3 +74,85 @@ docker image ls
 
 - prometheus：这是一个用于检测集群状态的开源工具，它暴露到host的端口为9090
 - grafana: 这是一个基于web的可视化面板，它能够把prometheus的数据呈现给用户，暴露到host的端口为9200
+
+## Bulk Load
+
+bulk load the three basic three tables
+```shell
+# run the client-test or other binary
+docker run -it --rm --network hjl_ddbms-network -v/path/to/Course-DDBS:/root/Course-DDBS:ro server /bin/bash
+
+# run the CLI tool
+./Course-DDBS/target/debug/ddbs-client -c control:27022 -s server1:27023 -s server2:27023
+
+# load the thee basic tables.
+[Course-DDBS]> :cluster-init
+```
+
+compute and bulk load be_read and popular_rank tables
+```shell
+# generator and load the be read table.
+[Course-DDBS]> :load-be-read
+
+# generator and load the monthly popular table.
+[Course-DDBS]> :load-monthly-popular-table
+# generator and load the weekly popular table.
+[Course-DDBS]> :load-weekly-popular-table
+# generator and load the daily popular table.
+[Course-DDBS]> :load-daily-popular-table
+```
+
+
+## CLI 使用手册
+
+### 客户端启动
+启动docker来运行客户端，从而运行CLI，能够从CLI输入内置命令来初始化集群，动态生成be_read和popular_rank数据；也能够直接输入SQL语句来执行。
+```shell
+# run the client-test or other binary
+docker run -it --rm --network hjl_ddbms-network -v/path/to/Course-DDBS:/root/Course-DDBS:ro server /bin/bash
+
+# run the CLI tool
+./Course-DDBS/target/debug/ddbs-client -c control:27022 -s server1:27023 -s server2:27023
+```
+
+### CLI内置命令
+包括集群初始化，动态生成be_read和popular_ran等表格
+```shell
+# all the inner-command list
+[Course-DDBS]> :h
+:q - Quit this application.
+:h - Show help message.
+:cluster-init - Init Database cluster.
+:load-be-read - generator and load the be read table.
+:load-monthly-popular-table - generator and load the monthly popular table.
+:load-weekly-popular-table - generator and load the weekly popular table.
+:load-daily-popular-table - generator and load the daily popular table.
+
+# Init Database cluster.
+[Course-DDBS]> :cluster-init
+
+# generator and load the be read table.
+[Course-DDBS]> :load-be-read
+```
+
+### CLI输入SQL语句并直接执行
+
+```shell
+# insert new  user
+[Course-DDBS]> INSERT INTO user VALUES ('1000000006','utest','test','test','male','emailtest','phonetest','depttest',
+               'grade1','zh','Beijing','role1','tages10','15');
+
+# update user
+[Course-DDBS]> UPDATE user SET name='test1',gender='female' WHERE id='utest';
+
+# common query
+[Course-DDBS]> SELECT * from user limit 5;
+[Course-DDBS]> SELECT  * from user WHERE region='Beijing' limit 5;
+[Course-DDBS]> SELECT  * from user WHERE region='Hong Kong' limit 5;
+[Course-DDBS]> SELECT  * from user WHERE region='Beijing' AND region='Hong Kong' limit 5;
+
+# complex query - inner join
+[Course-DDBS]> SELECT a.name,region, a.uid, b.uid FROM user AS a INNER JOIN user_read AS b ON a.uid = b.uid where a.region = "Beijing" LIMIT 5; 
+[Course-DDBS]> SELECT a.name,region, a.uid, b.uid, b.aid FROM user AS a INNER JOIN user_read AS b ON a.uid = b.uid where a.region = "Beijing" AND a.uid='5555' LIMIT 5;
+```
+
